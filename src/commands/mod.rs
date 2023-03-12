@@ -128,12 +128,12 @@ pub async fn args_steam_whitelisted(
 #[name = "UserMention"]
 #[check_in_help(false)]
 #[display_in_help(true)]
-fn is_usr_mention(
-  ctx: &mut Context,
+async fn is_usr_mention(
+  ctx: &Context,
   msg: &Message,
   args: &mut Args,
   _: &CommandOptions,
-) -> CheckResult {
+) -> Result<(), Reason> {
   if !args.is_empty() {
     let usr = args.parse::<String>().unwrap();
     let prefix = usr.get(0..=1).unwrap().to_string();
@@ -141,7 +141,7 @@ fn is_usr_mention(
 
     // Is the argument a valid @ mention
     if prefix == *"<@" && postfix == *">" {
-      return true.into()
+      return Ok(())
     }
   }
 
@@ -154,7 +154,7 @@ fn is_usr_mention(
     })
   });
 
-  CheckResult::new_log("Supplied arguments doesn't include a mentioned user")
+  Err(Reason::Log("Supplied arguments doesn't include a mentioned user".to_string()))
 }
 
 #[check]
