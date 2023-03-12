@@ -191,13 +191,13 @@ pub async fn valid_acct_length(
 #[name = "MojangRatelimit"]
 #[check_in_help(false)]
 #[display_in_help(true)]
-pub fn check_mojang_ratelimit(
-  ctx: &mut Context,
+pub async fn check_mojang_ratelimit(
+  ctx: &Context,
   msg: &Message,
   _: &mut Args,
   _: &CommandOptions,
-) -> CheckResult {
-  let mut data = ctx.data.write();
+) -> Result<(), Reason> {
+  let mut data = ctx.data.write().await;
 
   match data.get_mut::<Ratelimiter>() {
     Some(mut ratelimiter) => {
@@ -209,12 +209,12 @@ pub fn check_mojang_ratelimit(
         // Not zero because this command is also making a request
         ratelimiter.1 = 1u16;
 
-        true.into()
+        Ok(())
       } // Executes if under ratelimit quota
       else if requests < RATELIMIT_REQUESTS {
         ratelimiter.1 += 1u16;
 
-        true.into()
+        Ok(())
       } else {
         let time_remaining = Duration::from_secs(RATELIMIT_INTERVAL.as_secs() - time.elapsed().unwrap().as_secs());
 
@@ -227,7 +227,7 @@ pub fn check_mojang_ratelimit(
           })
         });
 
-        CheckResult::new_log("Quota reached. Try again later.")
+        Err(Reason::Log("Quota reached. Try again later.".to_string()))
       }
     },
     None => {
@@ -240,7 +240,7 @@ pub fn check_mojang_ratelimit(
         })
       });
 
-      CheckResult::new_log("Could not get Ratelimiter")
+      Err(Reason::Log("Could not get Ratelimiter".to_string()))
     },
   }
 }
