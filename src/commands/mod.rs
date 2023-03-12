@@ -76,12 +76,12 @@ pub async fn is_whitelist_channel(
 #[name = "NotMCWhitelisted"]
 #[check_in_help(false)]
 #[display_in_help(true)]
-pub fn not_mc_whitelisted(
-  ctx: &mut Context,
+pub async fn not_mc_whitelisted(
+  ctx: &Context,
   msg: &Message,
   _args: &mut Args,
   _: &CommandOptions,
-) -> CheckResult {
+) -> Result<(), Reason> {
   check_sender_not_whitelisted(ctx, msg, Account::Mojang)
 }
 
@@ -802,11 +802,11 @@ pub fn steamunlink(
   }
 }
 
-fn get_conn(
-  ctx: &mut Context,
+async fn get_conn(
+  ctx: &Context,
   msg: &Message,
 ) -> Result<MysqlPooledConnection, CommandResult> {
-  let data = ctx.data.read();
+  let data = ctx.data.read().await;
 
   match data.get::<MysqlPoolContainer>() {
     Some(v) => v.get().map_err(|_| Ok(())),
@@ -820,6 +820,7 @@ fn get_conn(
         })
       });
 
+      // TODO: Should probably bubble up a Error Reason
       Err(Ok(()))
     },
   }
@@ -902,18 +903,18 @@ fn check_arg_whitelisted(
   }
 }
 
-fn check_sender_not_whitelisted(
-  ctx: &mut Context,
+async fn check_sender_not_whitelisted(
+  ctx: &Context,
   msg: &Message,
   account_type: Account,
-) -> CheckResult {
+) -> Result<(), Reason> {
   let author_id = msg.author.id.as_u64();
-  let conn = match get_conn(ctx, msg) {
+  let conn = match get_conn(ctx, msg).await {
     Ok(val) => val,
-    Err(_) => return CheckResult::new_user_and_log(
-      "There was a problem whitelisting your account.",
-      GET_CONN_POOL_ERR,
-    ),
+    Err(_) => return Err(Reason::UserAndLog{
+      user: "There was a problem whitelisting your account.".to_string(),
+      log: GET_CONN_POOL_ERR.to_string(),
+    }),
   };
 
   let desc;
@@ -964,7 +965,7 @@ fn check_sender_not_whitelisted(
         })
       });
 
-      return CheckResult::new_log("Idiot programmer")
+      return Err(Reason::Log("Idiot programmer".to_string()))
     }
   };
 
@@ -981,13 +982,14 @@ fn check_sender_not_whitelisted(
         })
       });
 
-      CheckResult::new_user("You've already whitelisted a Steam account!")
+      Err(Reason::Log("You've already whitelisted a Steam account!".to_string()))
     },
     Some(e) => {
       use diesel::result::Error;
 
       match e {
-        Error::NotFound => true.into(),
+        // If we aren't in the database then we are guaranteed to not be whitelisted
+        Error::NotFound => Ok(()),
         _ => {
           let desc = MessageBuilder::new()
             .push(UNEXPECTED_FAIL)
@@ -1006,10 +1008,10 @@ fn check_sender_not_whitelisted(
             })
           });
 
-          CheckResult::new_user_and_log(
-            format!("An unexpected error occurred: `{}`", e.to_string()),
-            e.to_string(),
-          )
+          Err(Reason::UserAndLog {
+            user: format!("An unexpected error occurred: `{}`", e.to_string()),
+            log: e.to_string()
+          })
         }
       }
     }
