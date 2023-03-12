@@ -30,8 +30,10 @@ use std::collections::HashSet;
 use std::thread;
 use std::time::SystemTime;
 
-use self::routes::*;
-use crate::commands::{GENERAL_GROUP, HELP};
+// Disable until Craftalyst Client requires this
+// use self::routes::*;
+
+use crate::commands::GENERAL_GROUP;
 use crate::guards::mojang::Ratelimiter as APIRatelimiter;
 use crate::sql::establish_connection;
 use crate::models::MinecraftUser;
@@ -104,14 +106,15 @@ async fn main() {
     requests: 0u16,
   });
 
-  rocket::ignite()
-    .attach(WhitelistDatabase::fairing())
-    .mount("/v1", routes![
-      login::exchange,
-      refresh::refresh,
-      register::register,
-      status::status,
-    ])
-    .manage(ratelimit)
-    .launch();
+  // Disable until Craftalyst Client requires this
+  // rocket::ignite()
+  //   .attach(WhitelistDatabase::fairing())
+  //   .mount("/v1", routes![
+  //     login::exchange,
+  //     refresh::refresh,
+  //     register::register,
+  //     status::status,
+  //   ])
+  //   .manage(ratelimit)
+  //   .launch();
 }
