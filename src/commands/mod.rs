@@ -4,10 +4,10 @@ use diesel::{QueryDsl, RunQueryDsl};
 use rand::seq::SliceRandom;
 use serenity::{
   framework::standard::{
-    Args, CommandGroup, CommandResult, CommandOptions,
-    CommandError, CheckResult, HelpOptions,
-    macros::{command, check, help, group},
     help_commands,
+    Args, CommandGroup, CommandResult, CommandOptions,
+    DispatchError, HelpOptions, Reason,
+    macros::{command, check, help, group},
   },
   model::{
     channel::Message,
@@ -49,20 +49,26 @@ pub struct General;
 #[name = "WhitelistChan"] // AYAYA CUTE CHANNEL
 #[check_in_help(true)]
 #[display_in_help(true)]
-pub fn is_whitelist_channel(
-  ctx: &mut Context,
+pub async fn is_whitelist_channel(
+  ctx: &Context,
   msg: &Message,
   _: &mut Args,
   _: &CommandOptions,
-) -> CheckResult {
-  let data = ctx.data.read();
-  let config = data.get::<Config>().unwrap();
-  let channel_id = ChannelId(config.discord.channel_id);
+) -> Result<(), Reason> {
+  let channel_id: ChannelId = {
+    let data = ctx.data.read().await;
+
+    let config = data.get::<Config>()
+      .expect("Configuration should always be present in Global variables.")
+      .clone();
+
+    ChannelId(config.discord.channel_id)
+  };
 
   if channel_id == msg.channel_id {
-    true.into()
+    Ok(())
   } else {
-    CheckResult::new_log(CHECK_WRONG_CHAN)
+    Err(Reason::User(CHECK_WRONG_CHAN.to_string()))
   }
 }
 
