@@ -306,16 +306,11 @@ pub async fn command_enabled(
 #[checks(CommandEnabled, WhitelistChan, NotSteamWhitelisted)]
 #[min_args(1)]
 #[max_args(1)]
-pub fn steamlink(
-  ctx: &mut Context,
+pub async fn steamlink(
+  ctx: &Context,
   msg: &Message,
   args: Args,
 ) -> CommandResult {
-  let conn = match get_conn(ctx, msg) {
-    Ok(val) => val,
-    Err(_) => return Ok(()),
-  };
-
   match PlayerSummary::try_from(&args) {
     Ok(val) => {
       // Add account to database
@@ -324,41 +319,48 @@ pub fn steamlink(
         steam_id: val.steamid.parse::<u64>().unwrap(),
       };
       
-      match user.create(&conn) {
-        Ok(_) => {
-          msg.author.direct_message(&ctx, |m| {
-            let desc = MessageBuilder::new()
-              .push(STEAM_SUCCESS_1)
-              .push_mono(&val.alias)
-              .push(STEAM_SUCCESS_2)
-              .build();
+      // Wackyass thread safety shenanegans
+      match get_conn(ctx, msg).await {
+        Ok(conn) => {
+          let blocking = user.create(&conn);
+          match blocking {
+            Ok(_) => {
+              msg.author.direct_message(&ctx, |m| {
+                let desc = MessageBuilder::new()
+                  .push(STEAM_SUCCESS_1)
+                  .push_mono(&val.alias)
+                  .push(STEAM_SUCCESS_2)
+                  .build();
 
-            m.embed(|em| {
-              em.title(STEAM_SUCCESS_TITLE);
-              em.thumbnail(val.avatar_med);
-              em.description(desc);
-              em.color(Colour::new(0x0000_960C));
-              em.footer(|f| f.text(EMBED_FOOTER))
-            })
-          })?;
+                m.embed(|em| {
+                  em.title(STEAM_SUCCESS_TITLE);
+                  em.thumbnail(val.avatar_med);
+                  em.description(desc);
+                  em.color(Colour::new(0x0000_960C));
+                  em.footer(|f| f.text(EMBED_FOOTER))
+                })
+              }).await?;
+            },
+            Err(_) => {
+              msg.channel_id.send_message(&ctx, |m| {
+                let desc = MessageBuilder::new()
+                  .push_line(STEAM_FAIL_CONTACT)
+                  .push(CONTACT_1)
+                  .mention(&UserId(BOT_AUTHOR))
+                  .push(CONTACT_2)
+                  .build();
+
+                m.embed(|e| {
+                  e.title(STEAM_FAIL_TITLE);
+                  e.description(desc);
+                  e.color(Colour::new(0x00FF_0000));
+                  e.footer(|f| f.text(EMBED_FOOTER))
+                })
+              }).await?;
+            }
+          };  
         },
-        Err(_) => {
-          msg.channel_id.send_message(&ctx, |m| {
-            let desc = MessageBuilder::new()
-              .push_line(STEAM_FAIL_CONTACT)
-              .push(CONTACT_1)
-              .mention(&UserId(BOT_AUTHOR))
-              .push(CONTACT_2)
-              .build();
-
-            m.embed(|e| {
-              e.title(STEAM_FAIL_TITLE);
-              e.description(desc);
-              e.color(Colour::new(0x00FF_0000));
-              e.footer(|f| f.text(EMBED_FOOTER))
-            })
-          })?;
-        }
+        Err(_) => return Ok(()),
       };
 
       Ok(())
@@ -377,7 +379,7 @@ pub fn steamlink(
             em.color(Colour::new(0x00FF_0000));
             em.footer(|f| f.text(EMBED_FOOTER))
           })
-        })?;
+        }).await?;
 
         Ok(())
       },
@@ -394,7 +396,7 @@ pub fn steamlink(
             em.color(Colour::new(0x00FF_0000));
             em.footer(|f| f.text(EMBED_FOOTER))
           })
-        })?;
+        }).await?;
 
         Ok(())
       },
@@ -411,7 +413,7 @@ pub fn steamlink(
             em.color(Colour::new(0x00FF_0000));
             em.footer(|f| f.text(EMBED_FOOTER))
           })
-        })?;
+        }).await?;
 
         Ok(())
       },
@@ -428,7 +430,7 @@ pub fn steamlink(
             em.color(Colour::new(0x00FF_0000));
             em.footer(|f| f.text(EMBED_FOOTER))
           })
-        })?;
+        }).await?;
 
         Ok(())
       }
