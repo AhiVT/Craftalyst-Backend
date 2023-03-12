@@ -249,14 +249,18 @@ pub async fn check_mojang_ratelimit(
 #[name = "CommandEnabled"]
 #[check_in_help(true)]
 #[display_in_help(false)]
-pub fn command_enabled(
-  ctx: &mut Context,
+pub async fn command_enabled(
+  ctx: &Context,
   msg: &Message,
   _: &mut Args,
   opts: &CommandOptions,
-) -> CheckResult {
+) -> Result<(), Reason> {
   let data = ctx.data.read();
-  let config = data.get::<Config>().unwrap();
+  let config = {
+    let data = ctx.data.read().await;
+
+    data.get::<Config>().expect("Config should ALWAYS be present on global context.")
+  };
   let mut names: Vec<String> = opts.names
     .iter()
     .map(|x| String::from(x.to_owned()))
@@ -275,22 +279,25 @@ pub fn command_enabled(
     true
   });
 
-  if !enabled {
-    let _ = msg.channel_id.send_message(&ctx, |m| {
-      let desc = MessageBuilder::new()
-        .push(GERERAL_NOT_ENABLED)
-        .build();
+  match enabled {
+    true => Ok(()),
+    false => {
+      let _ = msg.channel_id.send_message(&ctx, |m| {
+        let desc = MessageBuilder::new()
+          .push(GERERAL_NOT_ENABLED)
+          .build();
+  
+        m.embed(|em| {
+          em.title(GENERAL_NOT_ENABLED_TITLE);
+          em.description(desc);
+          em.color(Colour::new(0x00FF_0000));
+          em.footer(|f| f.text(EMBED_FOOTER))
+        })
+      });
 
-      m.embed(|em| {
-        em.title(GENERAL_NOT_ENABLED_TITLE);
-        em.description(desc);
-        em.color(Colour::new(0x00FF_0000));
-        em.footer(|f| f.text(EMBED_FOOTER))
-      })
-    });
+      Err(Reason::Log(GERERAL_NOT_ENABLED.to_string()))
+    }
   }
-
-  enabled.into()
 }
 
 #[command]
