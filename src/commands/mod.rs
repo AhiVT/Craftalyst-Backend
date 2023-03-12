@@ -89,13 +89,13 @@ pub async fn not_mc_whitelisted(
 #[name = "NotSteamWhitelisted"]
 #[check_in_help(false)]
 #[display_in_help(true)]
-pub fn not_steam_whitelisted(
-  ctx: &mut Context,
+pub async fn not_steam_whitelisted(
+  ctx: &Context,
   msg: &Message,
   _args: &mut Args,
   _: &CommandOptions,
-) -> CheckResult {
-  check_sender_not_whitelisted(ctx, msg, Account::Steam)
+) -> Result<(), Reason> {
+  check_sender_not_whitelisted(ctx, msg, Account::Steam).await
 }
 
 #[check]
