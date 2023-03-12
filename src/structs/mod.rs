@@ -122,8 +122,8 @@ impl EventHandler for Handler {
   }
 
   // Dumb meme easter egg
-  fn message(&self, ctx: Context, msg: Message) {
-    let mut data = ctx.data.write();
+  async fn message(&self, ctx: Context, msg: Message) {
+    let mut data = ctx.data.write().await;
     let my_id = User::from(&data
       .get::<CurrentUserContainer>()
       .unwrap()
@@ -137,9 +137,9 @@ impl EventHandler for Handler {
         .emoji(emoji)
         .build();
 
-      let _ = msg.author.direct_message(&ctx, |m| {
+      msg.author.direct_message(&ctx, |m| {
         m.content(content)
-      });
+      }).await;
     }
   }
 
