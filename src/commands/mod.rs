@@ -115,13 +115,13 @@ pub async fn args_mc_whitelisted(
 #[name = "ArgsSteamWhitelisted"]
 #[check_in_help(false)]
 #[display_in_help(true)]
-pub fn args_steam_whitelisted(
-  ctx: &mut Context,
+pub async fn args_steam_whitelisted(
+  ctx: &Context,
   msg: &Message,
   args: &mut Args,
   _: &CommandOptions,
-) -> CheckResult {
-  check_arg_whitelisted(ctx, msg, args, Account::Steam)
+) -> Result<(), Reason> {
+  check_arg_whitelisted(ctx, msg, args, Account::Steam).await
 }
 
 #[check]
