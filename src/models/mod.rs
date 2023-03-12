@@ -4,7 +4,7 @@ use diesel::MysqlConnection;
 use serenity::model::id::UserId;
 use std::marker::Sized;
 
-use crate::schema::{minecrafters, steam};
+use crate::schema::minecrafters;
 use crate::structs::Account;
 
 pub trait Deleteable {
@@ -67,23 +67,6 @@ impl NewMinecraftUser {
   }
 }
 
-#[derive(Insertable, Queryable, Deserialize, AsChangeset)]
-#[table_name="steam"]
-pub struct SteamUser {
-  pub discord_id: u64,
-  pub steam_id: u64,
-}
-
-impl SteamUser {
-  pub fn create(&self, connection: &MysqlConnection) -> Result<usize, diesel::result::Error> {
-    use diesel::RunQueryDsl;
-
-    diesel::insert_into(steam::table)
-      .values(self)
-      .execute(connection)
-  }
-}
-
 impl Deleteable for UserId {
   fn delete(&self, account_type: Account, connection: &MysqlConnection) -> Result<usize, diesel::result::Error> {
     use diesel::QueryDsl;
@@ -96,18 +79,10 @@ impl Deleteable for UserId {
         diesel::delete(dsl::minecrafters.find(self.as_u64()))
           .execute(connection)
       },
-      Account::Steam => {
-        use crate::schema::steam::dsl;
-
-        diesel::delete(dsl::steam.find(self.as_u64()))
-          .execute(connection)
-      },
+      Account::Steam => Ok(0),
       Account::All => {
         use crate::schema::minecrafters::dsl as mc_dsl;
-        use crate::schema::steam::dsl as steam_dsl;
 
-        let _ = diesel::delete(steam_dsl::steam.find(self.as_u64()))
-          .execute(connection);
         diesel::delete(mc_dsl::minecrafters.find(self.as_u64()))
           .execute(connection)
       },
@@ -155,31 +130,6 @@ impl Searchable<&str, String> for MinecraftUser {
     minecrafters
       .filter(minecraft_uuid.eq(val))
       .select(minecraft_uuid)
-      .first(connection)
-  }
-}
-
-impl Findable for SteamUser {
-  fn find(id: u64, connection: &MysqlConnection) -> Result<Self, diesel::result::Error> {
-    use diesel::QueryDsl;
-    use diesel::RunQueryDsl;
-
-    steam::table
-      .find(&id)
-      .first(connection)
-  }
-}
-
-impl Searchable<&u64, u64> for SteamUser {
-  fn search(val: &u64, connection: &MysqlConnection) -> Result<u64, diesel::result::Error> {
-    use diesel::QueryDsl;
-    use diesel::RunQueryDsl;
-    use crate::schema::steam::dsl::*;
-    use crate::diesel::ExpressionMethods;
-
-    steam
-      .filter(steam_id.eq(val))
-      .select(steam_id)
       .first(connection)
   }
 }

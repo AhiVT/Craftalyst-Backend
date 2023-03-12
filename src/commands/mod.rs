@@ -27,7 +27,6 @@ use crate::sql::MysqlPooledConnection;
 use crate::models::{
   Deleteable, Findable, NewMinecraftUser,
   MinecraftUser as MinecraftUserModel,
-  SteamUser,
 };
 
 #[group]
@@ -540,7 +539,7 @@ async fn check_arg_whitelisted(
 
   match account_type {
     Account::Mojang => res = DieselFind::from(MinecraftUserModel::find(*usr.as_u64(), &conn)),
-    Account::Steam => res = DieselFind::from(SteamUser::find(*usr.as_u64(), &conn)),
+    Account::Steam => return Err(Reason::Log("Steam accounts are removed".to_string())),
     _ => {
       let desc = MessageBuilder::new()
         .push(PUBLIC_SHAMING_1)
