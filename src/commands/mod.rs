@@ -102,13 +102,13 @@ pub async fn not_steam_whitelisted(
 #[name = "ArgsMCWhitelisted"]
 #[check_in_help(false)]
 #[display_in_help(true)]
-pub fn args_mc_whitelisted(
-  ctx: &mut Context,
+pub async fn args_mc_whitelisted(
+  ctx: &Context,
   msg: &Message,
   args: &mut Args,
   _: &CommandOptions,
-) -> CheckResult {
-  check_arg_whitelisted(ctx, msg, args, Account::Mojang)
+) -> Result<(), Reason> {
+  check_arg_whitelisted(ctx, msg, args, Account::Mojang).await
 }
 
 #[check]
@@ -835,21 +835,21 @@ fn mention_to_user_id(args: &mut Args) -> UserId {
   UserId(usr.parse::<u64>().unwrap())
 }
 
-fn check_arg_whitelisted(
-  ctx: &mut Context,
+async fn check_arg_whitelisted(
+  ctx: &Context,
   msg: &Message,
   args: &mut Args,
   account_type: Account,
-) -> CheckResult {
+) -> Result<(), Reason> {
   // Parse the user string into a UserId
   let usr = mention_to_user_id(args);
 
-  let conn = match get_conn(ctx, msg) {
+  let conn = match get_conn(ctx, msg).await {
     Ok(val) => val,
-    Err(_) => return CheckResult::new_user_and_log(
-      "There was a problem looking up that account.",
-      GET_CONN_POOL_ERR,
-    ),
+    Err(_) => return Err(Reason::UserAndLog {
+      user: "There was a problem looking up that account.".to_string(),
+      log: GET_CONN_POOL_ERR.to_string()
+    })
   };
 
   let res: DieselFind;
@@ -873,13 +873,13 @@ fn check_arg_whitelisted(
         })
       });
 
-      return CheckResult::new_log("Idiot programmer")
+      return Err(Reason::Log("Idiot programmer".to_string()))
     },
   };
 
   match res.0 {
     // User found
-    None => true.into(),
+    None => Ok(()),
     Some(_) => {
       let _ = msg.channel_id.send_message(&ctx, |m| {
         let desc = MessageBuilder::new()
@@ -895,10 +895,10 @@ fn check_arg_whitelisted(
         })
       });
 
-      CheckResult::new_user_and_log(
-        "Not whitelisted",
-        "Not whitelisted",
-      )
+      Err(Reason::UserAndLog {
+        user: "Not whitelisted".to_string(),
+        log: "Not whitelisted".to_string()
+      })
     },
   }
 }
