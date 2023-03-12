@@ -507,8 +507,8 @@ pub async fn help(
 #[min_args(1)]
 #[max_args(1)]
 #[bucket = "whitelist"]
-pub fn mclink(
-  ctx: &mut Context,
+pub async fn mclink(
+  ctx: &Context,
   msg: &Message,
   args: Args,
 ) -> CommandResult {
@@ -516,12 +516,8 @@ pub fn mclink(
   let account = args.parse::<String>().unwrap();
   let res = MinecraftUser::get_user(&account);
   let json: Vec<MinecraftUser>;
-  let conn = match get_conn(ctx, msg) {
-    Ok(val) => val,
-    Err(_) => return Ok(()),
-  };
 
-  match res {
+  match res.await {
     Ok(val) => json = val,
     Err(_) => {
       let _ = msg.channel_id.send_message(&ctx, |m| {
@@ -559,9 +555,8 @@ pub fn mclink(
     minecraft_uuid: String::from(&json.id),
     minecraft_name: String::from(&json.name),
   };
-  
-  match user.create(&conn) {
-    Ok(_) => {
+  match get_conn(ctx, msg).await {
+    Ok(conn) => {
       msg.author.direct_message(&ctx, |m| {
         m.embed(|e| {
           e.title("Success");
@@ -574,7 +569,7 @@ https://github.com/MOONMOONOSS/HeliosLauncher/releases
           e.color(Colour::new(0x0000_960C));
           e.footer(|f| f.text(EMBED_FOOTER))
         })
-      })?;
+      }).await?;
 
       return Ok(())
     },
@@ -586,7 +581,7 @@ https://github.com/MOONMOONOSS/HeliosLauncher/releases
           e.color(Colour::new(0x00FF_0000));
           e.footer(|f| f.text(EMBED_FOOTER))
         })
-      })?;
+      }).await?;
     }
   }
 
