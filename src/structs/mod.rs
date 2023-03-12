@@ -143,7 +143,7 @@ impl EventHandler for Handler {
     }
   }
 
-  fn guild_member_removal(
+  async fn guild_member_removal(
     &self,
     ctx: Context,
     guild: GuildId,
@@ -157,6 +157,7 @@ impl EventHandler for Handler {
 
       let data = ctx.data.read();
       let conn = data
+        .await
         .get::<MysqlPoolContainer>()
         .expect("get SQL pool")
         .get()
