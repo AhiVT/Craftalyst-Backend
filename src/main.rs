@@ -20,6 +20,7 @@ pub mod structs;
 use dotenv::dotenv;
 use parking_lot::RwLock;
 use rocket_contrib::databases::diesel as diesel_rocket;
+use serenity::prelude::GatewayIntents;
 use serenity::{
   client::Client,
   framework::standard::StandardFramework,
@@ -40,58 +41,58 @@ use crate::structs::{
 };
 
 static DISCORD_API_ENDPOINT: &str = "https://discordapp.com/api/v6";
-static DISCORD_APP_ID: u64 = 604_009_411_928_784_917;
-static DISCORD_GUILD_ID: u64 = 193_277_318_494_420_992;
+static DISCORD_APP_ID: u64 = 1_084_582_096_804_249_622;
+// AhiVT Discord
+static DISCORD_GUILD_ID: u64 = 951_038_397_726_748_682;
 static DISCORD_REDIRECT_URI: &str = "https://localhost:8080/discord";
 static DISCORD_SCOPES: [&str; 2] = ["identify", "guilds"];
 
 #[database("main")]
 pub struct WhitelistDatabase(diesel_rocket::MysqlConnection);
 
-fn main() {
+#[tokio::main]
+async fn main() {
   dotenv().ok();
 
   let config = Config::get_config();
+  let framework = StandardFramework::new()
+    .configure(|c| c.with_whitespace(true).prefix("!"))
+    .group(&GENERAL_GROUP)
+    .bucket("whitelist", |b| b.time_span(10).limit(1))
+    .await;
 
-  let mut client =
-    Client::new(&config.discord.token, Handler).expect("Error creating client");
+  let mut client = Client::builder(&config.discord.token, GatewayIntents::default())
+    .event_handler(Handler)
+    .framework(framework)
+    .await
+    .expect("Error creating client");
 
   // Bot owners
   // TODO: Make yaml section for list of owner ids
   let mut owners = HashSet::new();
-  owners.insert(UserId(82_982_763_317_166_080));  // Dunkel
-  owners.insert(UserId(663_197_294_262_222_870)); // Varme
-  owners.insert(UserId(468_937_023_307_120_660)); // Moonmoon
+  owners.insert(UserId(82_982_763_317_166_080));  // AhiVT
 
-  {
+  async {
     let mut data = client.data.write();
 
     // Add connection pool instance to bot
-    data.insert::<MysqlPoolContainer>(establish_connection());
+    data.await.insert::<MysqlPoolContainer>(establish_connection());
 
     // Make ratelimit counter tuple
     let ratelimit = Ratelimiter(SystemTime::now(), 0u16);
-    data.insert::<Ratelimiter>(ratelimit);
+    data.await.insert::<Ratelimiter>(ratelimit);
 
     // Used exclusively to pick a random whitelisted user
     let eligible_usrs: Vec<MinecraftUser> = vec![];
-    data.insert::<EligibleUsers>(eligible_usrs);
+    data.await.insert::<EligibleUsers>(eligible_usrs);
 
     // Add configuration file to bot
-    data.insert::<Config>(config);
-  }
-  
-  client.with_framework(
-    StandardFramework::new()
-      .configure(|c| c.prefix("!").owners(owners))
-      .group(&GENERAL_GROUP)
-      .bucket("whitelist", |b| b.time_span(10).limit(1))
-      .help(&HELP),
-  );
+    data.await.insert::<Config>(config);
+  };
 
-  thread::spawn(move || {
+  thread::spawn(move || async {
     // Start listening for events, single shard. Shouldn't need more than one shard
-    if let Err(why) = client.start() {
+    if let Err(why) = client.start().await {
       println!("An error occurred while running the client: {:?}", why);
     }
   });
