@@ -4,6 +4,7 @@ pub mod mojang;
 use diesel::RunQueryDsl;
 use diesel::QueryDsl;
 
+use serenity::async_trait;
 use serenity::{
   prelude::{EventHandler, Context},
   model::{
@@ -87,16 +88,22 @@ impl<D> From<Result<D, diesel::result::Error>> for DieselFind {
 
 pub struct Handler;
 
+#[async_trait]
 impl EventHandler for Handler {
-  fn ready(&self, ctx: Context, ready: Ready) {
+  async fn ready(&self, ctx: Context, ready: Ready) {
     println!("Bot connected as {}", ready.user.name);
 
     {
       // Insert bot UserId into context
-      let mut data = ctx.data.write();
-      let config = data.get::<Config>().unwrap();
+      let mut data = ctx
+        .data
+        .write()
+        .await;
+      let config = data
+        .get::<Config>()
+        .unwrap();
       let guild_id = GuildId(config.discord.guild_id);
-      let guild = Guild::get(&ctx, guild_id).unwrap();
+      let guild = Guild::get(&ctx, guild_id).await.unwrap();
       let emote_name = "moon2Pinged";
 
       guild.emojis
