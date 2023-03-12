@@ -195,7 +195,7 @@ impl EventHandler for Handler {
             .to_user(&ctx)
             .await
             .unwrap();
-          let _ = user.direct_message(&ctx, |m| {
+          user.direct_message(&ctx, |m| {
             m.embed(|e| {
               e.title("Welcome back!");
               e.description(format!("We missed you! You are receiving this message because you whitelisted a Minecraft account.
@@ -204,9 +204,9 @@ Your account is now ready to play on Vanilla and Modded servers once more!
               e.color(Colour::new(0x0000_960C));
               e.footer(|f| f.text(EMBED_FOOTER))
             })
-          });
+          }).await;
 
-          let _ = diesel::update(minecrafters.find(usr_id.as_u64()))
+          diesel::update(minecrafters.find(usr_id.as_u64()))
             .set(suspended.eq(0))
             .execute(&conn);
         },
@@ -215,13 +215,13 @@ Your account is now ready to play on Vanilla and Modded servers once more!
     }
   }
 
-  fn guild_member_update(
+  async fn guild_member_update(
     &self,
     ctx: Context,
     old: Option<Member>,
     new: Member,
   ) {
-    let data = ctx.data.read();
+    let data = ctx.data.read().await;
     let conn = data
       .get::<MysqlPoolContainer>()
       .expect("get SQL pool")
@@ -232,17 +232,19 @@ Your account is now ready to play on Vanilla and Modded servers once more!
     use crate::schema::minecrafters::dsl::*;
 
     if new.roles.contains(&RoleId(PIT_ROLE)) {
-      let user = new.user_id().to_user(&ctx).unwrap();
+      let user = &new.user;
 
       println!("{} was pitted.", user.name);
 
-      match minecrafters.find(user.id.as_u64()).first::<MinecraftUser>(&conn) {
+      let search = minecrafters.find(user.id.as_u64()).first::<MinecraftUser>(&conn);
+
+      match search {
         Ok(_) => {
           let _ = diesel::update(minecrafters.find(user.id.as_u64()))
             .set(suspended.eq(1))
             .execute(&conn);
 
-          let _ = user.direct_message(&ctx, |m| {
+          user.direct_message(&ctx, |m| {
             m.embed(|e| {
               e.title("Notice of Punishment");
               e.description(format!("You have been pitted by a moderator for breaking a rule.
@@ -253,7 +255,7 @@ For the duration of your punishment, you will not be able to join the community 
               e.color(Colour::new(0x0000_960C));
               e.footer(|f| f.text(EMBED_FOOTER))
             })
-          });
+          }).await;
         },
         Err(_) => {},
       }
@@ -262,23 +264,24 @@ For the duration of your punishment, you will not be able to join the community 
     match old {
       Some(val) => {
         if val.roles.contains(&RoleId(PIT_ROLE)) {
-          let user = new.user_id().to_user(&ctx).unwrap();
+          let user = &new.user;
 
-          match minecrafters.find(user.id.as_u64()).first::<MinecraftUser>(&conn) {
+          let search = minecrafters.find(user.id.as_u64()).first::<MinecraftUser>(&conn);
+          match search {
             Ok(res) => {
               if res.suspended == 1 {
                 let _ = diesel::update(minecrafters.find(user.id.as_u64()))
                   .set(suspended.eq(0))
                   .execute(&conn);
                 
-                let _ = user.direct_message(&ctx, |m| {
+                user.direct_message(&ctx, |m| {
                   m.embed(|e| {
                     e.title("Punishment Followup");
                     e.description(format!("Your punishment has expired. You may now rejoin the community servers."));
                     e.color(Colour::new(0x0000_960C));
                     e.footer(|f| f.text(EMBED_FOOTER))
                   })
-                });
+                }).await;
               }
             },
             Err(_) => {},
