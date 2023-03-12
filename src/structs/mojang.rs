@@ -10,15 +10,15 @@ pub struct MinecraftUser {
 }
 
 impl MinecraftUser {
-  pub fn get_user(username: &str) -> Result<Vec<MinecraftUser>, StatusCode> {
-    let client = reqwest::blocking::Client::new();
+  pub async fn get_user(username: &str) -> Result<Vec<MinecraftUser>, StatusCode> {
+    let client = reqwest::Client::new();
     let payload = json!([&username]);
     // Will panic if cannot connect to Mojang
-    let resp = client.post(MOJANG_API).json(&payload).send();
+    let resp = client.post(MOJANG_API).json(&payload).send().await;
     match resp {
       Ok(res) => {
         match res.status() {
-          StatusCode::OK => Ok(res.json().unwrap()),
+          StatusCode::OK => Ok(res.json().await.unwrap()),
           _ => Err(res.status()),
         }
       },
