@@ -39,9 +39,8 @@ use crate::models::{
 
 #[group]
 #[commands(
-  hcpick, hcbroadcast, mclink,
-  mcunlink, quotastats, steamlink,
-  steamunlink,
+  mclink, mcunlink, quotastats,
+  steamlink, steamunlink,
 )]
 pub struct General;
 
@@ -623,141 +622,6 @@ pub async fn mcunlink(
       return Ok(())
     }
   }
-}
-
-#[command]
-#[description = "Choose a player at random to be whitelisted on the Hardcore server"]
-#[owners_only]
-pub fn hcpick(
-  ctx: &mut Context,
-  msg: &Message,
-  _args: Args,
-) -> CommandResult {
-  let mut data = ctx.data.write();
-  let eligible_usrs = data
-    .get_mut::<EligibleUsers>()
-    .unwrap();
-
-  let whitelist = OpenOptions::new()
-    .read(true)
-    .write(true)
-    .open(format!("{}/hc-mc/whitelist.json", home_dir().unwrap().display()));
-  
-  match whitelist {
-    Ok(mut file) => {
-      let reader = BufReader::new(&file);
-      let mut wl_vec: Vec<WhitelistEntry> = serde_json::from_reader(reader).unwrap();
-      let chosen_usr = eligible_usrs.choose(&mut rand::thread_rng()).unwrap();
-      let chosen_wl_entry = WhitelistEntry {
-        uuid: format_uuid(String::from(&chosen_usr.minecraft_uuid)),
-        name: String::from(&chosen_usr.minecraft_name),
-      };
-
-      wl_vec.push(chosen_wl_entry);
-
-      file.seek(SeekFrom::Start(0));
-      serde_json::to_writer(file, &wl_vec);
-
-      let usr = UserId(chosen_usr.discord_id).to_user(&ctx).unwrap();
-      let _ = usr.direct_message(&ctx, |m| {
-        m.embed(|e| {
-          e.title("Hardcore Minecraft Message");
-          e.description(format!("Your Minecraft account `{}` has been chosen to play on the Hardcore server.
-Server IP: `51.81.48.39:27061`
-Version: 1.15.2", &chosen_usr.minecraft_name));
-          e.color(Colour::new(0x0000_960C));
-          e.footer(|f| f.text(EMBED_FOOTER))
-        })
-      });
-      let _ = msg.reply(&ctx, &format!("<@{}> (`{}`) was picked!", chosen_usr.discord_id, &chosen_usr.minecraft_name));
-
-      // Empty the queue
-      eligible_usrs.clear();
-    },
-    Err(err) => {
-      let _ = msg.reply(&ctx, "Failed! Unable to open `whitelist.json` for writing!");
-      println!("{:#?}", err);
-    }
-  }
-
-  Ok(())
-}
-
-#[command]
-#[description = "Broadcasts a message to all Hardcore players"]
-#[owners_only]
-pub fn hcbroadcast(
-  ctx: &mut Context,
-  msg: &Message,
-  _args: Args,
-) -> CommandResult {
-  use crate::diesel::ExpressionMethods;
-  use crate::schema::minecrafters::dsl::*;
-
-  let conn = match get_conn(ctx, msg) {
-    Ok(val) => val,
-    Err(_) => return Ok(()),
-  };
-  let whitelist = OpenOptions::new()
-    .read(true)
-    .open(format!("{}/hc-mc/whitelist.json", home_dir().unwrap().display()));
-
-  let banlist = OpenOptions::new()
-    .read(true)
-    .open(format!("{}/hc-mc/banned-players.json", home_dir().unwrap().display()));
-
-  let message = msg.content_safe(&ctx).split_at(12).1.to_owned();
-
-  match whitelist {
-    Ok(file) => {
-      let wl_reader = BufReader::new(&file);
-      let wl_vec: Vec<WhitelistEntry> = serde_json::from_reader(wl_reader).unwrap();
-
-      if banlist.is_ok() {
-        let banlist = banlist.unwrap();
-        let bl_reader = BufReader::new(&banlist);
-        let bl_vec: Vec<BlacklistEntry> = serde_json::from_reader(bl_reader).unwrap();
-        let mut filtered_players: Vec<WhitelistEntry> = vec![];
-
-        for whitelist_player in wl_vec {
-          if !bl_vec.iter().any(|k| k.uuid == whitelist_player.uuid) {
-            filtered_players.push(whitelist_player);
-          }
-        }
-
-        for whitelist_player in filtered_players {
-          let res = minecrafters
-            .filter(minecraft_name.eq(whitelist_player.name))
-            .select(discord_id)
-            .first(&conn);
-
-          if res.is_ok() {
-            match UserId(res.unwrap()).to_user(&ctx) {
-              Ok(user) => {
-                let _ = user.direct_message(&ctx, |m| {
-                  m.embed(|e| {
-                    e.title(format!("Exclusive Hardcore Server Broadcast from {}", msg.author.name));
-                    e.description(&message);
-                    e.color(Colour::from_rgb(235, 168, 0));
-                    e.footer(|f| f.text(EMBED_FOOTER))
-                  })
-                });
-              },
-              Err(_) => {},
-            }
-          }
-        }
-      } else {
-        let _ = msg.reply(&ctx, "Failed! Unable to open `banned-players.json` for reading!");
-      }
-    },
-    Err(err) => {
-      let _ = msg.reply(&ctx, "Failed! Unable to open `whitelist.json` for reading!");
-      println!("{:#?}", err);
-    }
-  }
-
-  Ok(())
 }
 
 fn format_uuid(uuid: String) -> String {
