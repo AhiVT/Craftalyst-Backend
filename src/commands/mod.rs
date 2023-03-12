@@ -1,12 +1,10 @@
 #![allow(clippy::implicit_hasher)]
 
-use diesel::{QueryDsl, RunQueryDsl};
-use rand::seq::SliceRandom;
 use serenity::{
   framework::standard::{
     help_commands,
     Args, CommandGroup, CommandResult, CommandOptions,
-    DispatchError, HelpOptions, Reason,
+    HelpOptions, Reason,
     macros::{command, check, help, group},
   },
   model::{
@@ -17,18 +15,13 @@ use serenity::{
   utils::{Colour, MessageBuilder},
 };
 use std::collections::HashSet;
-use std::convert::TryFrom;
-use std::env::home_dir;
-use std::fs::OpenOptions;
-use std::io::{BufReader, Seek, SeekFrom};
 use std::time::{Duration, SystemTime};
 
 use crate::constants::*;
 use crate::structs::{
-  Account, BlacklistEntry, DieselFind, EligibleUsers,
-  MysqlPoolContainer, Ratelimiter, WhitelistEntry,
+  Account, DieselFind,
+  MysqlPoolContainer, Ratelimiter,
   config::Config, mojang::MinecraftUser,
-  steam::{ParseSteamIDError, PlayerSummary},
 };
 use crate::sql::MysqlPooledConnection;
 use crate::models::{
@@ -38,10 +31,7 @@ use crate::models::{
 };
 
 #[group]
-#[commands(
-  mclink, mcunlink, quotastats,
-  steamlink, steamunlink,
-)]
+#[commands(mclink, mcunlink, quotastats)]
 pub struct General;
 
 #[check]
@@ -301,144 +291,6 @@ pub async fn command_enabled(
 
 #[command]
 #[owners_only]
-#[description = "Whitelists the given Steam account."]
-#[checks(CommandEnabled, WhitelistChan, NotSteamWhitelisted)]
-#[min_args(1)]
-#[max_args(1)]
-pub async fn steamlink(
-  ctx: &Context,
-  msg: &Message,
-  args: Args,
-) -> CommandResult {
-  match PlayerSummary::try_from(&args) {
-    Ok(val) => {
-      // Add account to database
-      let user = SteamUser {
-        discord_id: *msg.author.id.as_u64(),
-        steam_id: val.steamid.parse::<u64>().unwrap(),
-      };
-      
-      // Wackyass thread safety shenanegans
-      match get_conn(ctx, msg).await {
-        Ok(conn) => {
-          let blocking = user.create(&conn);
-          match blocking {
-            Ok(_) => {
-              msg.author.direct_message(&ctx, |m| {
-                let desc = MessageBuilder::new()
-                  .push(STEAM_SUCCESS_1)
-                  .push_mono(&val.alias)
-                  .push(STEAM_SUCCESS_2)
-                  .build();
-
-                m.embed(|em| {
-                  em.title(STEAM_SUCCESS_TITLE);
-                  em.thumbnail(val.avatar_med);
-                  em.description(desc);
-                  em.color(Colour::new(0x0000_960C));
-                  em.footer(|f| f.text(EMBED_FOOTER))
-                })
-              }).await?;
-            },
-            Err(_) => {
-              msg.channel_id.send_message(&ctx, |m| {
-                let desc = MessageBuilder::new()
-                  .push_line(STEAM_FAIL_CONTACT)
-                  .push(CONTACT_1)
-                  .mention(&UserId(BOT_AUTHOR))
-                  .push(CONTACT_2)
-                  .build();
-
-                m.embed(|e| {
-                  e.title(STEAM_FAIL_TITLE);
-                  e.description(desc);
-                  e.color(Colour::new(0x00FF_0000));
-                  e.footer(|f| f.text(EMBED_FOOTER))
-                })
-              }).await?;
-            }
-          };  
-        },
-        Err(_) => return Ok(()),
-      };
-
-      Ok(())
-    },
-    Err(e) => match e {
-      ParseSteamIDError::InvalidURL => {
-        msg.channel_id.send_message(&ctx, |m| {
-          let desc = MessageBuilder::new()
-            .push_line(STEAM_FAIL_URL_1)
-            .push(STEAM_FAIL_URL_2)
-            .build();
-
-          m.embed(|em| {
-            em.title(STEAM_FAIL_TITLE);
-            em.description(desc);
-            em.color(Colour::new(0x00FF_0000));
-            em.footer(|f| f.text(EMBED_FOOTER))
-          })
-        }).await?;
-
-        Ok(())
-      },
-      ParseSteamIDError::NotFound => {
-        msg.channel_id.send_message(&ctx, |m| {
-          let desc = MessageBuilder::new()
-            .push_line(STEAM_FAIL_NOT_FOUND)
-            .push(STEAM_FAIL_URL_2)
-            .build();
-
-          m.embed(|em| {
-            em.title(STEAM_FAIL_TITLE);
-            em.description(desc);
-            em.color(Colour::new(0x00FF_0000));
-            em.footer(|f| f.text(EMBED_FOOTER))
-          })
-        }).await?;
-
-        Ok(())
-      },
-      ParseSteamIDError::RequestFailed(_) => {
-        msg.channel_id.send_message(&ctx, |m| {
-          let desc = MessageBuilder::new()
-            .push_line(STEAM_FAIL_REQUEST)
-            .push(TRY_AGAIN)
-            .build();
-
-          m.embed(|em| {
-            em.title(STEAM_FAIL_TITLE);
-            em.description(desc);
-            em.color(Colour::new(0x00FF_0000));
-            em.footer(|f| f.text(EMBED_FOOTER))
-          })
-        }).await?;
-
-        Ok(())
-      },
-      _ => {
-        msg.channel_id.send_message(&ctx, |m| {
-          let desc = MessageBuilder::new()
-            .push_line(GENERAL_FAIL_REQUEST)
-            .push(NO_RETRY)
-            .build();
-
-          m.embed(|em| {
-            em.title(GENERAL_FAIL_TITLE);
-            em.description(desc);
-            em.color(Colour::new(0x00FF_0000));
-            em.footer(|f| f.text(EMBED_FOOTER))
-          })
-        }).await?;
-
-        Ok(())
-      }
-    },
-  }
-}
-
-#[command]
-#[owners_only]
 #[checks(CommandEnabled)]
 pub async fn quotastats(
   ctx: &Context,
@@ -634,46 +486,6 @@ fn format_uuid(uuid: String) -> String {
   format!("{}-{}-{}-{}-{}", first, second, third, fourth, fifth)
 }
 
-#[command]
-#[description = "Unlinks the given User's Steam account"]
-#[checks(CommandEnabled, UserMention, ArgsSteamWhitelisted)]
-#[min_args(1)]
-#[max_args(1)]
-#[owners_only]
-pub fn steamunlink(
-  ctx: &mut Context,
-  msg: &Message,
-  mut args: Args,
-) -> CommandResult {
-  let usr = mention_to_user_id(&mut args);
-
-  let conn = match get_conn(ctx, msg) {
-    Ok(val) => val,
-    Err(_) => return Err(CommandError(String::from("SQL connection unavailable."))),
-  };
-
-  match usr.delete(Account::Steam, &conn) {
-    Ok(_) => {
-      let _ = msg.channel_id.send_message(&ctx, |m| {
-        let desc = MessageBuilder::new()
-          .mention(&usr)
-          .push(STEAM_UNLINK_SUCCESS)
-          .build();
-
-        m.embed(|em| {
-          em.title(STEAM_UNLINK_TITLE);
-          em.description(desc);
-          em.color(Colour::new(0x0000_960C));
-          em.footer(|f| f.text(EMBED_FOOTER))
-        })
-      });
-
-      Ok(())
-    },
-    Err(_) => Err(CommandError(format!("<@{}> was not unlinked.", usr.as_u64()))),
-  }
-}
-
 async fn get_conn(
   ctx: &Context,
   msg: &Message,
@@ -810,17 +622,7 @@ async fn check_sender_not_whitelisted(
         .build();
       title = WHITELIST_ADD_FAIL;
     },
-    Account::Steam => {
-      res = DieselFind::from(SteamUser::find(*author_id, &conn));
-      desc = MessageBuilder::new()
-        .push_line(STEAM_FAIL_LINKED_1)
-        .push_line(STEAM_FAIL_LINKED_2)
-        .push(CONTACT_1)
-        .mention(&UserId(BOT_AUTHOR))
-        .push(CONTACT_2)
-        .build();
-      title = STEAM_FAIL_TITLE;
-    },
+    Account::Steam => return Err(Reason::Log("Steam linking no longer supported".to_string())),
     _ => {
       let desc = MessageBuilder::new()
         .push(PUBLIC_SHAMING_1)
