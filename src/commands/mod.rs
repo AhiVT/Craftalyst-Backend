@@ -594,32 +594,34 @@ https://github.com/MOONMOONOSS/HeliosLauncher/releases
 #[min_args(1)]
 #[max_args(1)]
 #[owners_only]
-pub fn mcunlink(
-  ctx: &mut Context,
+pub async fn mcunlink(
+  ctx: &Context,
   msg: &Message,
   mut args: Args,
 ) -> CommandResult {
-  let usr = mention_to_user_id(&mut args);
+  match get_conn(ctx, msg).await {
+    Ok(conn) => {
+      let usr = mention_to_user_id(&mut args);
+      if usr.delete(Account::Mojang, &conn).is_ok() {
+        msg.channel_id.send_message(&ctx, |m| {
+          m.embed(|em| {
+            em.title("Minecraft Unlink Success");
+            em.description(format!("<@{}> was unlinked successfully.", &usr.as_u64()));
+            em.color(Colour::new(0x0000_960C));
+            em.footer(|f| f.text(EMBED_FOOTER))
+          })
+        }).await?;
+  
+        return Ok(())
+      }
 
-  let conn = match get_conn(ctx, msg) {
-    Ok(val) => val,
-    Err(_) => return Err(CommandError(String::from("SQL connection unavailable."))),
-  };
-
-  match usr.delete(Account::Mojang, &conn) {
-    Ok(_) => {
-      let _ = msg.channel_id.send_message(&ctx, |m| {
-        m.embed(|em| {
-          em.title("Minecraft Unlink Success");
-          em.description(format!("<@{}> was unlinked successfully.", usr.as_u64()));
-          em.color(Colour::new(0x0000_960C));
-          em.footer(|f| f.text(EMBED_FOOTER))
-        })
-      });
-
-      Ok(())
+      msg.reply(ctx, format!("<@{}> was not unlinked.", usr.as_u64())).await?;
+      return Ok(())
     },
-    Err(_) => Err(CommandError(format!("<@{}> was not unlinked.", usr.as_u64()))),
+    Err(_) => {
+      msg.reply(ctx, String::from("SQL connection unavailable.")).await?;
+      return Ok(())
+    }
   }
 }
 
