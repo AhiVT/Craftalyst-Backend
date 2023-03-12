@@ -82,7 +82,7 @@ pub async fn not_mc_whitelisted(
   _args: &mut Args,
   _: &CommandOptions,
 ) -> Result<(), Reason> {
-  check_sender_not_whitelisted(ctx, msg, Account::Mojang)
+  check_sender_not_whitelisted(ctx, msg, Account::Mojang).await
 }
 
 #[check]
