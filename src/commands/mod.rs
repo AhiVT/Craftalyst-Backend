@@ -487,15 +487,17 @@ Quota Remaining: **{}**
 #[lacking_permissions = "Strike"]
 #[lacking_role = "Strike"]
 #[wrong_channel = "Strike"]
-pub fn help(
-  ctx: &mut Context,
+pub async fn help(
+  ctx: &Context,
   msg: &Message,
   args: Args,
   help_options: &'static HelpOptions,
   groups: &[&'static CommandGroup],
   owners: HashSet<UserId>,
 ) -> CommandResult {
-  help_commands::with_embeds(ctx, msg, args, help_options, groups, owners)
+  help_commands::with_embeds(ctx, msg, args, help_options, groups, owners).await;
+
+  Ok(())
 }
 
 #[command]
