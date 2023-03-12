@@ -1,4 +1,4 @@
-#![feature(try_trait, drain_filter, proc_macro_hygiene, decl_macro)]
+#![feature(drain_filter, proc_macro_hygiene, decl_macro)]
 #[macro_use]
 extern crate diesel;
 #[macro_use] 
