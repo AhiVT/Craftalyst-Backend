@@ -167,17 +167,17 @@ impl EventHandler for Handler {
     }
   }
 
-  fn guild_member_addition(
+  async fn guild_member_addition(
     &self,
     ctx: Context,
-    guild: GuildId,
     member: Member,
   ) {
     let discord_vals: Discord = Config::get_config().discord;
 
-    if &discord_vals.guild_id == guild.as_u64() {
+    if &discord_vals.guild_id == member.guild_id.as_u64() {
       let data = ctx.data.read();
       let conn = data
+        .await
         .get::<MysqlPoolContainer>()
         .expect("get SQL pool")
         .get()
@@ -186,11 +186,15 @@ impl EventHandler for Handler {
       use crate::diesel::ExpressionMethods;
       use crate::schema::minecrafters::dsl::*;
 
-      let usr_id = member.user_id();
+      let usr_id = member.user.id;
+      let search = minecrafters.find(usr_id.as_u64()).first::<MinecraftUser>(&conn);
 
-      match minecrafters.find(usr_id.as_u64()).first::<MinecraftUser>(&conn) {
+      match search {
         Ok(_) => {
-          let user = usr_id.to_user(&ctx).unwrap();
+          let user = usr_id
+            .to_user(&ctx)
+            .await
+            .unwrap();
           let _ = user.direct_message(&ctx, |m| {
             m.embed(|e| {
               e.title("Welcome back!");
