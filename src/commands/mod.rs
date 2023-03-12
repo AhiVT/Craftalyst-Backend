@@ -161,16 +161,18 @@ async fn is_usr_mention(
 #[name = "ValidAcctLength"]
 #[check_in_help(false)]
 #[display_in_help(false)]
-pub fn valid_acct_length(
-  ctx: &mut Context,
+pub async fn valid_acct_length(
+  ctx: &Context,
   msg: &Message,
   args: &mut Args,
   _: &CommandOptions,
-) -> CheckResult {
-  let account = args.parse::<String>().unwrap();
+) -> Result<(), Reason> {
+  let account = args
+    .parse::<String>()
+    .expect("An account should ALWAYS be supplied as an argument parsable to String");
 
   if account.len() <= MAX_NAME_LEN {
-    return true.into();
+    return Ok(())
   }
 
   let _ = msg.channel_id.send_message(&ctx, |m| {
@@ -182,7 +184,7 @@ pub fn valid_acct_length(
     })
   });
 
-  CheckResult::new_log(CHECK_LONG_NAME)
+  Err(Reason::Log(CHECK_LONG_NAME.to_string()))
 }
 
 #[check]
