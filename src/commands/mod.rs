@@ -441,14 +441,12 @@ pub async fn steamlink(
 #[command]
 #[owners_only]
 #[checks(CommandEnabled)]
-pub fn quotastats(
-  ctx: &mut Context,
+pub async fn quotastats(
+  ctx: &Context,
   msg: &Message,
   _: Args,
 ) -> CommandResult {
-  let data = ctx.data.read();
-
-  match data.get::<Ratelimiter>() {
+  match ctx.data.read().await.get::<Ratelimiter>() {
     Some(ratelimiter) => {
       let time = ratelimiter.0;
       let requests = ratelimiter.1;
