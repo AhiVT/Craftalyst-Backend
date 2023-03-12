@@ -80,23 +80,23 @@ impl TryFrom<DiscordToken<RefreshToken>> for Bearer {
       .form(&req)
       .send()?;
     
-    // Step 3: Determine if the operation is a success
-    if client.status().is_success() {
-      let res: Bearer = client.json::<Bearer>()?;
+      // Step 3: Determine if the operation is a success
+      if client.status().is_success() {
+        let res: Bearer = client.json::<Bearer>()?;
 
-      // Step 4: Ensure required scopes are present
-      let req_scopes: Vec<&str> = DISCORD_SCOPES.to_vec();
-      let scopes: Vec<&str> = res.scope.split(' ').collect();
-      for scope in req_scopes {
-        if !scopes.contains(&scope) {
-          return Err(Self::Error::MissingScope)
+        // Step 4: Ensure required scopes are present
+        let req_scopes: Vec<&str> = DISCORD_SCOPES.to_vec();
+        let scopes: Vec<&str> = res.scope.split(' ').collect();
+        for scope in req_scopes {
+          if !scopes.contains(&scope) {
+            return Err(Self::Error::MissingScope)
+          }
         }
+        
+        Ok(res)
+      } else {
+        Err(Self::Error::Rejected)
       }
-      
-      Ok(res)
-    } else {
-      Err(Self::Error::Rejected)
-    }    
   }
 }
 
