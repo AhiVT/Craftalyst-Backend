@@ -3,23 +3,23 @@
 extern crate diesel;
 #[macro_use] 
 extern crate serde_derive;
-#[macro_use]
-extern crate rocket;
-#[macro_use]
-extern crate rocket_contrib;
+// #[macro_use]
+// extern crate rocket;
+// #[macro_use]
+// extern crate rocket_contrib;
 
 pub mod commands;
 pub mod constants;
 pub mod guards;
 pub mod models;
-pub mod routes;
+// pub mod routes;
 pub mod schema;
 pub mod sql;
 pub mod structs;
 
 use dotenv::dotenv;
 use parking_lot::RwLock;
-use rocket_contrib::databases::diesel as diesel_rocket;
+// use rocket_contrib::databases::diesel as diesel_rocket;
 use serenity::prelude::GatewayIntents;
 use serenity::{
   client::Client,
@@ -49,8 +49,8 @@ static DISCORD_GUILD_ID: u64 = 951_038_397_726_748_682;
 static DISCORD_REDIRECT_URI: &str = "https://localhost:8080/discord";
 static DISCORD_SCOPES: [&str; 2] = ["identify", "guilds"];
 
-#[database("main")]
-pub struct WhitelistDatabase(diesel_rocket::MysqlConnection);
+// #[database("main")]
+// pub struct WhitelistDatabase(diesel_rocket::MysqlConnection);
 
 #[tokio::main]
 async fn main() {
