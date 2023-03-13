@@ -5,6 +5,9 @@ use diesel::RunQueryDsl;
 use diesel::QueryDsl;
 
 use serenity::async_trait;
+use serenity::model::application::command::Command;
+use serenity::model::application::interaction::{Interaction, InteractionResponseType};
+use serenity::http::CacheHttp;
 use serenity::{
   prelude::{EventHandler, Context},
   model::{
@@ -19,6 +22,7 @@ use serenity::{
 use serenity::prelude::*;
 use std::time::SystemTime;
 
+use crate::commands;
 use crate::structs::{config::{Config, Discord}};
 use crate::constants::*;
 use crate::sql::MysqlPool;
@@ -93,6 +97,12 @@ impl EventHandler for Handler {
   async fn ready(&self, ctx: Context, ready: Ready) {
     println!("Bot connected as {}", ready.user.name);
 
+    let guild_command = Command::create_global_application_command(&ctx.http, |command| {
+      commands::mclink::register(command)
+    }).await;
+
+    println!("I created the following global slash command: {:#?}", guild_command);
+
     {
       // Insert bot UserId into context
       let mut data = ctx
@@ -118,6 +128,29 @@ impl EventHandler for Handler {
         .for_each(drop);
 
       data.insert::<CurrentUserContainer>(CurrentUserContainer{val: ready.user});
+    }
+  }
+
+  async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+    if let Interaction::ApplicationCommand(command) = interaction {
+      println!("Received command interaction: {:#?}", command);
+
+      let owned_command_data = command.data.options.to_vec();
+      let content = match command.data.name.as_str() {
+        "mclink" => commands::mclink::run(&ctx, &command, &owned_command_data).await,
+        _ => "Not implemented".to_string(),
+      };
+
+      if let Err(why) = command
+        .create_interaction_response(&ctx.http, |response| {
+          response
+            .kind(InteractionResponseType::ChannelMessageWithSource)
+            .interaction_response_data(|message| message.content(content))
+        })
+        .await
+      {
+          println!("Cannot respond to slash command: {}", why);
+      }
     }
   }
 

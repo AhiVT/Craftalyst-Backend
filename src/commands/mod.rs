@@ -1,5 +1,7 @@
 #![allow(clippy::implicit_hasher)]
 
+pub mod mclink;
+
 use serenity::{
   framework::standard::{
     help_commands,
