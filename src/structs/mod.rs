@@ -123,6 +123,7 @@ impl EventHandler for Handler {
 
   // Dumb meme easter egg
   async fn message(&self, ctx: Context, msg: Message) {
+    println!("Message sent");
     let mut data = ctx.data.write().await;
     let my_id = User::from(&data
       .get::<CurrentUserContainer>()

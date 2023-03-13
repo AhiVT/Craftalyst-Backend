@@ -18,7 +18,7 @@ pub mod sql;
 pub mod structs;
 
 use dotenv::dotenv;
-use parking_lot::RwLock;
+// use parking_lot::RwLock;
 // use rocket_contrib::databases::diesel as diesel_rocket;
 use serenity::prelude::GatewayIntents;
 use serenity::{
@@ -27,14 +27,14 @@ use serenity::{
   model::id::UserId,
 };
 use std::collections::HashSet;
-use std::thread;
+// use std::thread;
 use std::time::SystemTime;
 
 // Disable until Craftalyst Client requires this
 // use self::routes::*;
 
 use crate::commands::GENERAL_GROUP;
-use crate::guards::mojang::Ratelimiter as APIRatelimiter;
+// use crate::guards::mojang::Ratelimiter as APIRatelimiter;
 use crate::sql::establish_connection;
 use crate::models::MinecraftUser;
 use crate::structs::{
@@ -63,48 +63,52 @@ async fn main() {
     .bucket("whitelist", |b| b.time_span(10).limit(1))
     .await;
 
-  let mut client = Client::builder(&config.discord.token, GatewayIntents::default())
+  let intents = GatewayIntents::GUILD_MESSAGES
+    | GatewayIntents::DIRECT_MESSAGES
+    | GatewayIntents::MESSAGE_CONTENT;
+
+  let mut client = Client::builder(&config.discord.token, intents)
     .event_handler(Handler)
     .framework(framework)
     .await
     .expect("Error creating client");
 
-  // Bot owners
-  // TODO: Make yaml section for list of owner ids
-  let mut owners = HashSet::new();
-  owners.insert(UserId(82_982_763_317_166_080));  // AhiVT
+  {
+    // Bot owners
+    // TODO: Make yaml section for list of owner ids
+    let mut owners = HashSet::new();
+    owners.insert(UserId(82_982_763_317_166_080));  // AhiVT
 
-  async {
-    let mut data = client.data.write();
+    let mut data = client.data.write().await;
 
     // Add connection pool instance to bot
-    data.await.insert::<MysqlPoolContainer>(establish_connection());
+    data.insert::<MysqlPoolContainer>(establish_connection());
 
     // Make ratelimit counter tuple
     let ratelimit = Ratelimiter(SystemTime::now(), 0u16);
-    data.await.insert::<Ratelimiter>(ratelimit);
+    data.insert::<Ratelimiter>(ratelimit);
 
     // Used exclusively to pick a random whitelisted user
     let eligible_usrs: Vec<MinecraftUser> = vec![];
-    data.await.insert::<EligibleUsers>(eligible_usrs);
+    data.insert::<EligibleUsers>(eligible_usrs);
 
     // Add configuration file to bot
-    data.await.insert::<Config>(config);
-  };
+    data.insert::<Config>(config);
+  }
 
-  thread::spawn(move || async {
+  // thread::spawn(move || async {
     // Start listening for events, single shard. Shouldn't need more than one shard
     if let Err(why) = client.start().await {
-      println!("An error occurred while running the client: {:?}", why);
+      eprintln!("An error occurred while running the client: {:?}", why);
     }
-  });
+  // });
 
-  println!("Starting API");
+  // println!("Starting API");
 
-  let ratelimit = RwLock::new(APIRatelimiter {
-    time: SystemTime::now(),
-    requests: 0u16,
-  });
+  // let ratelimit = RwLock::new(APIRatelimiter {
+  //   time: SystemTime::now(),
+  //   requests: 0u16,
+  // });
 
   // Disable until Craftalyst Client requires this
   // rocket::ignite()

@@ -243,12 +243,8 @@ pub async fn command_enabled(
   _: &mut Args,
   opts: &CommandOptions,
 ) -> Result<(), Reason> {
-  let data = ctx.data.read();
-  let config = {
-    let data = ctx.data.read().await;
-
-    data.get::<Config>().expect("Config should ALWAYS be present on global context.")
-  };
+  let data = ctx.data.read().await;
+  let config = data.get::<Config>().expect("Config should ALWAYS be present on global context.");
   let mut names: Vec<String> = opts.names
     .iter()
     .map(|x| String::from(x.to_owned()))
@@ -258,7 +254,6 @@ pub async fn command_enabled(
   names.drain_filter(|val| {
     if !enabled {
       match val.as_ref() {
-        "steamlink" | "steamunlink" => enabled = config.steam.enabled,
         "mclink" | "mcunlink" | "quotastats" => enabled = config.minecraft.enabled,
         _ => {},
       }
@@ -364,10 +359,11 @@ pub async fn mclink(
 ) -> CommandResult {
   // Retrieve the user's current MC UUID
   let account = args.parse::<String>().unwrap();
-  let res = MinecraftUser::get_user(&account);
+  println!("{}", &account);
+  let res = MinecraftUser::get_user(&account).await;
   let json: Vec<MinecraftUser>;
 
-  match res.await {
+  match res {
     Ok(val) => json = val,
     Err(_) => {
       let _ = msg.channel_id.send_message(&ctx, |m| {
@@ -382,6 +378,8 @@ pub async fn mclink(
       return Ok(());
     },
   };
+
+  println!("{:#?}", json);
 
   // If resulting array is empty, then username is not found
   if json.is_empty() {
@@ -407,21 +405,37 @@ pub async fn mclink(
   };
   match get_conn(ctx, msg).await {
     Ok(conn) => {
-      msg.author.direct_message(&ctx, |m| {
-        m.embed(|e| {
-          e.title("Success");
-          e.description(format!("Your Minecraft account `{}` has been successfully linked.
-Please check <#{}> channel pins for server info and FAQ.
-The new MOON2 Launcher brings all our servers into one launcher! Download it from the Discord Store or GitHub today!
-https://discordapp.com/store/skus/604009411928784917/moon2-launcher
-https://github.com/MOONMOONOSS/HeliosLauncher/releases
-**If you leave Mooncord for any reason, you will be removed from the whitelist**", json.name, MC_CHANNEL_ID));
-          e.color(Colour::new(0x0000_960C));
-          e.footer(|f| f.text(EMBED_FOOTER))
-        })
-      }).await?;
+      let result = user.create(&conn);
 
-      return Ok(())
+      match result {
+        Ok(_) => {
+          msg.author.direct_message(&ctx, |m| {
+            m.embed(|e| {
+              e.title("Success");
+              e.description(format!("Your Minecraft account `{}` has been successfully linked.
+    Please check <#{}> channel pins for server info and FAQ.
+    The new MOON2 Launcher brings all our servers into one launcher! Download it from the Discord Store or GitHub today!
+    https://discordapp.com/store/skus/604009411928784917/moon2-launcher
+    https://github.com/MOONMOONOSS/HeliosLauncher/releases
+    **If you leave Mooncord for any reason, you will be removed from the whitelist**", json.name, MC_CHANNEL_ID));
+              e.color(Colour::new(0x0000_960C));
+              e.footer(|f| f.text(EMBED_FOOTER))
+            })
+          }).await?;
+    
+          return Ok(())
+        },
+        Err(_) => {
+          msg.channel_id.send_message(&ctx, |m| {
+            m.embed(|e| {
+              e.title(WHITELIST_ADD_FAIL);
+              e.description(format!("Please try again later.\nContact <@{}> or <@663197294262222870> for assistance.", BOT_AUTHOR));
+              e.color(Colour::new(0x00FF_0000));
+              e.footer(|f| f.text(EMBED_FOOTER))
+            })
+          }).await?;
+        }
+      }
     },
     Err(_) => {
       msg.channel_id.send_message(&ctx, |m| {
@@ -433,7 +447,7 @@ https://github.com/MOONMOONOSS/HeliosLauncher/releases
         })
       }).await?;
     }
-  }
+  };
 
   Ok(())
 }
@@ -443,7 +457,7 @@ https://github.com/MOONMOONOSS/HeliosLauncher/releases
 #[checks(CommandEnabled, UserMention, ArgsMCWhitelisted)]
 #[min_args(1)]
 #[max_args(1)]
-#[owners_only]
+#[allowed_roles("CATGON", "Moderator")]
 pub async fn mcunlink(
   ctx: &Context,
   msg: &Message,
