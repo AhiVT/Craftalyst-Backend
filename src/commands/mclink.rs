@@ -10,12 +10,14 @@ use serenity::model::prelude::interaction::application_command::{CommandDataOpti
 use serenity::prelude::{Context, SerenityError};
 use serenity::utils::Colour;
 
-use crate::commands::MinecraftUserModel;
+use crate::commands::{MinecraftUserModel, get_conn};
 use crate::constants::{RATELIMIT_INTERVAL, RATELIMIT_REQUESTS, BOT_AUTHOR, GET_CONN_POOL_ERR, EMBED_FOOTER, MC_CHANNEL_ID};
 use crate::models::{Findable, NewMinecraftUser};
 use crate::sql::MysqlPooledConnection;
 use crate::structs::mojang::MinecraftUser;
 use crate::structs::{Ratelimiter, Account, MysqlPoolContainer, DieselFind};
+
+use super::{check_sender_not_whitelisted, check_mojang_ratelimit};
 
 pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
   command
@@ -30,86 +32,6 @@ pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicatio
         .max_length(16)
         .required(true)
     })
-}
-
-async fn check_mojang_ratelimit(ctx: &Context) -> Result<(), String> {
-  let mut data = ctx.data.write().await;
-
-  match data.get_mut::<Ratelimiter>() {
-    Some(mut ratelimiter) => {
-      let time = ratelimiter.0;
-      let requests = ratelimiter.1;
-
-      if time.elapsed().unwrap() > RATELIMIT_INTERVAL {
-        ratelimiter.0 = SystemTime::now();
-        // Not zero because this command is also making a request
-        ratelimiter.1 = 1u16;
-
-        Ok(())
-      } // Executes if under ratelimit quota
-      else if requests < RATELIMIT_REQUESTS {
-        ratelimiter.1 += 1u16;
-
-        Ok(())
-      } else {
-        let time_remaining = Duration::from_secs(RATELIMIT_INTERVAL.as_secs() - time.elapsed().unwrap().as_secs());
-
-        Err(format!("We're currently experiencing heavy load.\nTry again in about {:#?} seconds.", time_remaining.as_secs()))
-      }
-    },
-    None => {
-      Err(format!("There was a general error. Please try again.\nContact <@{}> for assistance.", BOT_AUTHOR))
-    },
-  }
-}
-
-async fn get_conn(ctx: &Context) -> Result<MysqlPooledConnection, String> {
-  let data = ctx.data.read().await;
-
-  match data.get::<MysqlPoolContainer>() {
-    Some(v) => v.get().map_err(|err| err.to_string()),
-    None => Err(format!("There was a general error. Please try again.\nContact <@{}> for assistance.", BOT_AUTHOR)),
-  }
-}
-
-async fn check_sender_not_whitelisted(
-  ctx: &Context,
-  command: &ApplicationCommandInteraction,
-  account_type: Account,
-) -> Result<(), String> {
-  let author_id = match &command.member {
-    Some(invoker) => {
-      invoker.user.id.as_u64().clone()
-    },
-    None => return Err("Message sent from DM".to_string()),
-  };
-  let conn = match get_conn(ctx).await {
-    Ok(val) => val,
-    Err(_) => return Err(GET_CONN_POOL_ERR.to_string()),
-  };
-
-  let res: DieselFind;
-
-  // This may be an issue
-  match account_type {
-    Account::Mojang => res = DieselFind::from(MinecraftUserModel::find(author_id, &conn)),
-    Account::Steam => return Err("Steam linking no longer supported".to_string()),
-    _ => return Err("Invalid account type".to_string())
-  };
-
-  match res.0 {
-    // User found
-    None => Err(format!("This account has already been whitelisted by <@{}>", author_id)),
-    Some(e) => {
-      use diesel::result::Error;
-
-      match e {
-        // If we aren't in the database then we are guaranteed to not be whitelisted
-        Error::NotFound => Ok(()),
-        _ => Err("An unexpected error occurred. You were not whitelisted.".to_string())
-      }
-    }
-  }
 }
 
 async fn not_mc_whitelisted(

@@ -97,11 +97,16 @@ impl EventHandler for Handler {
   async fn ready(&self, ctx: Context, ready: Ready) {
     println!("Bot connected as {}", ready.user.name);
 
-    let guild_command = Command::create_global_application_command(&ctx.http, |command| {
+    let link = Command::create_global_application_command(&ctx.http, |command| {
       commands::mclink::register(command)
     }).await;
 
-    println!("I created the following global slash command: {:#?}", guild_command);
+    let unlink = Command::create_global_application_command(&ctx.http, |command| {
+      commands::mcunlink::register(command)
+    }).await;
+
+    println!("I created the following global slash command: {:#?}", link);
+    println!("I created the following global slash command: {:#?}", unlink);
 
     {
       // Insert bot UserId into context
@@ -138,6 +143,7 @@ impl EventHandler for Handler {
       let owned_command_data = command.data.options.to_vec();
       match command.data.name.as_str() {
         "mclink" => commands::mclink::run(&ctx, &command, &owned_command_data).await,
+        "mcunlink" => commands::mcunlink::run(&ctx, &command, &owned_command_data).await,
         _ => Ok(()),
       };
     }

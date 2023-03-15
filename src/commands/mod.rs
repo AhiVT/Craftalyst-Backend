@@ -1,6 +1,7 @@
 #![allow(clippy::implicit_hasher)]
 
 pub mod mclink;
+pub mod mcunlink;
 
 use serenity::{
   framework::standard::{
@@ -11,7 +12,7 @@ use serenity::{
   },
   model::{
     channel::Message,
-    id::{ChannelId, UserId},
+    id::{ChannelId, UserId}, prelude::interaction::application_command::ApplicationCommandInteraction,
   },
   prelude::Context,
   utils::{Colour, MessageBuilder},
@@ -31,8 +32,88 @@ use crate::models::{
   MinecraftUser as MinecraftUserModel,
 };
 
+async fn check_mojang_ratelimit(ctx: &Context) -> Result<(), String> {
+  let mut data = ctx.data.write().await;
+
+  match data.get_mut::<Ratelimiter>() {
+    Some(mut ratelimiter) => {
+      let time = ratelimiter.0;
+      let requests = ratelimiter.1;
+
+      if time.elapsed().unwrap() > RATELIMIT_INTERVAL {
+        ratelimiter.0 = SystemTime::now();
+        // Not zero because this command is also making a request
+        ratelimiter.1 = 1u16;
+
+        Ok(())
+      } // Executes if under ratelimit quota
+      else if requests < RATELIMIT_REQUESTS {
+        ratelimiter.1 += 1u16;
+
+        Ok(())
+      } else {
+        let time_remaining = Duration::from_secs(RATELIMIT_INTERVAL.as_secs() - time.elapsed().unwrap().as_secs());
+
+        Err(format!("We're currently experiencing heavy load.\nTry again in about {:#?} seconds.", time_remaining.as_secs()))
+      }
+    },
+    None => {
+      Err(format!("There was a general error. Please try again.\nContact <@{}> for assistance.", BOT_AUTHOR))
+    },
+  }
+}
+
+async fn get_conn(ctx: &Context) -> Result<MysqlPooledConnection, String> {
+  let data = ctx.data.read().await;
+
+  match data.get::<MysqlPoolContainer>() {
+    Some(v) => v.get().map_err(|err| err.to_string()),
+    None => Err(format!("There was a general error. Please try again.\nContact <@{}> for assistance.", BOT_AUTHOR)),
+  }
+}
+
+async fn check_sender_not_whitelisted(
+  ctx: &Context,
+  command: &ApplicationCommandInteraction,
+  account_type: Account,
+) -> Result<(), String> {
+  let author_id = match &command.member {
+    Some(invoker) => {
+      invoker.user.id.as_u64().clone()
+    },
+    None => return Err("Message sent from DM".to_string()),
+  };
+  let conn = match get_conn(ctx).await {
+    Ok(val) => val,
+    Err(_) => return Err(GET_CONN_POOL_ERR.to_string()),
+  };
+
+  let res: DieselFind;
+
+  // This may be an issue
+  match account_type {
+    Account::Mojang => res = DieselFind::from(MinecraftUserModel::find(author_id, &conn)),
+    Account::Steam => return Err("Steam linking no longer supported".to_string()),
+    _ => return Err("Invalid account type".to_string())
+  };
+
+  match res.0 {
+    // User found
+    None => Err(format!("This account has already been whitelisted by <@{}>", author_id)),
+    Some(e) => {
+      use diesel::result::Error;
+
+      match e {
+        // If we aren't in the database then we are guaranteed to not be whitelisted
+        Error::NotFound => Ok(()),
+        _ => Err("An unexpected error occurred. You were not whitelisted.".to_string())
+      }
+    }
+  }
+}
+
 #[group]
-#[commands(mcunlink, quotastats)]
+#[commands(quotastats)]
 pub struct General;
 
 #[check]
@@ -62,232 +143,8 @@ pub async fn is_whitelist_channel(
   }
 }
 
-#[check]
-#[name = "NotMCWhitelisted"]
-#[check_in_help(false)]
-#[display_in_help(true)]
-pub async fn not_mc_whitelisted(
-  ctx: &Context,
-  msg: &Message,
-  _args: &mut Args,
-  _: &CommandOptions,
-) -> Result<(), Reason> {
-  check_sender_not_whitelisted(ctx, msg, Account::Mojang).await
-}
-
-#[check]
-#[name = "NotSteamWhitelisted"]
-#[check_in_help(false)]
-#[display_in_help(true)]
-pub async fn not_steam_whitelisted(
-  ctx: &Context,
-  msg: &Message,
-  _args: &mut Args,
-  _: &CommandOptions,
-) -> Result<(), Reason> {
-  check_sender_not_whitelisted(ctx, msg, Account::Steam).await
-}
-
-#[check]
-#[name = "ArgsMCWhitelisted"]
-#[check_in_help(false)]
-#[display_in_help(true)]
-pub async fn args_mc_whitelisted(
-  ctx: &Context,
-  msg: &Message,
-  args: &mut Args,
-  _: &CommandOptions,
-) -> Result<(), Reason> {
-  check_arg_whitelisted(ctx, msg, args, Account::Mojang).await
-}
-
-#[check]
-#[name = "ArgsSteamWhitelisted"]
-#[check_in_help(false)]
-#[display_in_help(true)]
-pub async fn args_steam_whitelisted(
-  ctx: &Context,
-  msg: &Message,
-  args: &mut Args,
-  _: &CommandOptions,
-) -> Result<(), Reason> {
-  check_arg_whitelisted(ctx, msg, args, Account::Steam).await
-}
-
-#[check]
-#[name = "UserMention"]
-#[check_in_help(false)]
-#[display_in_help(true)]
-async fn is_usr_mention(
-  ctx: &Context,
-  msg: &Message,
-  args: &mut Args,
-  _: &CommandOptions,
-) -> Result<(), Reason> {
-  if !args.is_empty() {
-    let usr = args.parse::<String>().unwrap();
-    let prefix = usr.get(0..=1).unwrap().to_string();
-    let postfix = usr.chars().last().unwrap().to_string();
-
-    // Is the argument a valid @ mention
-    if prefix == *"<@" && postfix == *">" {
-      return Ok(())
-    }
-  }
-
-  let _ = msg.channel_id.send_message(&ctx, |m| {
-    m.embed(|em| {
-      em.title("Condition not met");
-      em.description("Argument must be a user mention");
-      em.color(Colour::new(0x00FF_0000));
-      em.footer(|f| f.text(EMBED_FOOTER))
-    })
-  });
-
-  Err(Reason::Log("Supplied arguments doesn't include a mentioned user".to_string()))
-}
-
-#[check]
-#[name = "ValidAcctLength"]
-#[check_in_help(false)]
-#[display_in_help(false)]
-pub async fn valid_acct_length(
-  ctx: &Context,
-  msg: &Message,
-  args: &mut Args,
-  _: &CommandOptions,
-) -> Result<(), Reason> {
-  let account = args
-    .parse::<String>()
-    .expect("An account should ALWAYS be supplied as an argument parsable to String");
-
-  if account.len() <= MAX_NAME_LEN {
-    return Ok(())
-  }
-
-  let _ = msg.channel_id.send_message(&ctx, |m| {
-    m.embed(|em| {
-      em.title(CHECK_LONG_NAME);
-      em.description(format!("Mojang usernames are no longer than 16 characters.\nWindows 10, Mobile, and Console Editions cannot join.\nContact <@{}> for assistance.", BOT_AUTHOR));
-      em.color(Colour::new(0x00FF_0000));
-      em.footer(|f| f.text(EMBED_FOOTER))
-    })
-  });
-
-  Err(Reason::Log(CHECK_LONG_NAME.to_string()))
-}
-
-#[check]
-#[name = "MojangRatelimit"]
-#[check_in_help(false)]
-#[display_in_help(true)]
-pub async fn check_mojang_ratelimit(
-  ctx: &Context,
-  msg: &Message,
-  _: &mut Args,
-  _: &CommandOptions,
-) -> Result<(), Reason> {
-  let mut data = ctx.data.write().await;
-
-  match data.get_mut::<Ratelimiter>() {
-    Some(mut ratelimiter) => {
-      let time = ratelimiter.0;
-      let requests = ratelimiter.1;
-
-      if time.elapsed().unwrap() > RATELIMIT_INTERVAL {
-        ratelimiter.0 = SystemTime::now();
-        // Not zero because this command is also making a request
-        ratelimiter.1 = 1u16;
-
-        Ok(())
-      } // Executes if under ratelimit quota
-      else if requests < RATELIMIT_REQUESTS {
-        ratelimiter.1 += 1u16;
-
-        Ok(())
-      } else {
-        let time_remaining = Duration::from_secs(RATELIMIT_INTERVAL.as_secs() - time.elapsed().unwrap().as_secs());
-
-        let _ = msg.channel_id.send_message(&ctx, |m| {
-          m.embed(|em| {
-            em.title("Quota reached!");
-            em.description(format!("We're currently experiencing heavy load.\nTry again in about {:#?} seconds.", time_remaining.as_secs()));
-            em.color(Colour::new(0x00FF_0000));
-            em.footer(|f| f.text(EMBED_FOOTER))
-          })
-        });
-
-        Err(Reason::Log("Quota reached. Try again later.".to_string()))
-      }
-    },
-    None => {
-      let _ = msg.channel_id.send_message(&ctx, |m| {
-        m.embed(|em| {
-          em.title(WHITELIST_ADD_FAIL);
-          em.description(format!("There was a general error. Please try again.\nContact <@{}> for assistance.", BOT_AUTHOR));
-          em.color(Colour::new(0x00FF_0000));
-          em.footer(|f| f.text(EMBED_FOOTER))
-        })
-      });
-
-      Err(Reason::Log("Could not get Ratelimiter".to_string()))
-    },
-  }
-}
-
-#[check]
-#[name = "CommandEnabled"]
-#[check_in_help(true)]
-#[display_in_help(false)]
-pub async fn command_enabled(
-  ctx: &Context,
-  msg: &Message,
-  _: &mut Args,
-  opts: &CommandOptions,
-) -> Result<(), Reason> {
-  let data = ctx.data.read().await;
-  let config = data.get::<Config>().expect("Config should ALWAYS be present on global context.");
-  let mut names: Vec<String> = opts.names
-    .iter()
-    .map(|x| String::from(x.to_owned()))
-    .collect();
-  let mut enabled = false;
-
-  names.drain_filter(|val| {
-    if !enabled {
-      match val.as_ref() {
-        "mclink" | "mcunlink" | "quotastats" => enabled = config.minecraft.enabled,
-        _ => {},
-      }
-    }
-
-    true
-  });
-
-  match enabled {
-    true => Ok(()),
-    false => {
-      let _ = msg.channel_id.send_message(&ctx, |m| {
-        let desc = MessageBuilder::new()
-          .push(GERERAL_NOT_ENABLED)
-          .build();
-  
-        m.embed(|em| {
-          em.title(GENERAL_NOT_ENABLED_TITLE);
-          em.description(desc);
-          em.color(Colour::new(0x00FF_0000));
-          em.footer(|f| f.text(EMBED_FOOTER))
-        })
-      });
-
-      Err(Reason::Log(GERERAL_NOT_ENABLED.to_string()))
-    }
-  }
-}
-
 #[command]
 #[owners_only]
-#[checks(CommandEnabled)]
 pub async fn quotastats(
   ctx: &Context,
   msg: &Message,
@@ -347,43 +204,6 @@ pub async fn help(
   Ok(())
 }
 
-#[command]
-#[description = "Unlinks the given User's Mojang account"]
-#[checks(CommandEnabled, UserMention, ArgsMCWhitelisted)]
-#[min_args(1)]
-#[max_args(1)]
-#[allowed_roles("CATGON", "Moderator")]
-pub async fn mcunlink(
-  ctx: &Context,
-  msg: &Message,
-  mut args: Args,
-) -> CommandResult {
-  match get_conn(ctx, msg).await {
-    Ok(conn) => {
-      let usr = mention_to_user_id(&mut args);
-      if usr.delete(Account::Mojang, &conn).is_ok() {
-        msg.channel_id.send_message(&ctx, |m| {
-          m.embed(|em| {
-            em.title("Minecraft Unlink Success");
-            em.description(format!("<@{}> was unlinked successfully.", &usr.as_u64()));
-            em.color(Colour::new(0x0000_960C));
-            em.footer(|f| f.text(EMBED_FOOTER))
-          })
-        }).await?;
-  
-        return Ok(())
-      }
-
-      msg.reply(ctx, format!("<@{}> was not unlinked.", usr.as_u64())).await?;
-      return Ok(())
-    },
-    Err(_) => {
-      msg.reply(ctx, String::from("SQL connection unavailable.")).await?;
-      return Ok(())
-    }
-  }
-}
-
 fn format_uuid(uuid: String) -> String {
   let first = &uuid[..8];
   let second = &uuid[8..12];
@@ -392,30 +212,6 @@ fn format_uuid(uuid: String) -> String {
   let fifth = &uuid[20..];
 
   format!("{}-{}-{}-{}-{}", first, second, third, fourth, fifth)
-}
-
-async fn get_conn(
-  ctx: &Context,
-  msg: &Message,
-) -> Result<MysqlPooledConnection, CommandResult> {
-  let data = ctx.data.read().await;
-
-  match data.get::<MysqlPoolContainer>() {
-    Some(v) => v.get().map_err(|_| Ok(())),
-    None => {
-      let _ = msg.channel_id.send_message(&ctx, |m| {
-        m.embed(|em| {
-          em.title(WHITELIST_ADD_FAIL);
-          em.description(format!("There was a general error. Please try again.\nContact <@{}> for assistance.", BOT_AUTHOR));
-          em.color(Colour::new(0x00FF_0000));
-          em.footer(|f| f.text(EMBED_FOOTER))
-        })
-      });
-
-      // TODO: Should probably bubble up a Error Reason
-      Err(Ok(()))
-    },
-  }
 }
 
 // TODO: Make this a TryFrom
@@ -436,7 +232,7 @@ async fn check_arg_whitelisted(
   // Parse the user string into a UserId
   let usr = mention_to_user_id(args);
 
-  let conn = match get_conn(ctx, msg).await {
+  let conn = match get_conn(ctx).await {
     Ok(val) => val,
     Err(_) => return Err(Reason::UserAndLog {
       user: "There was a problem looking up that account.".to_string(),
@@ -492,110 +288,5 @@ async fn check_arg_whitelisted(
         log: "Not whitelisted".to_string()
       })
     },
-  }
-}
-
-async fn check_sender_not_whitelisted(
-  ctx: &Context,
-  msg: &Message,
-  account_type: Account,
-) -> Result<(), Reason> {
-  let author_id = msg.author.id.as_u64();
-  let conn = match get_conn(ctx, msg).await {
-    Ok(val) => val,
-    Err(_) => return Err(Reason::UserAndLog{
-      user: "There was a problem whitelisting your account.".to_string(),
-      log: GET_CONN_POOL_ERR.to_string(),
-    }),
-  };
-
-  let desc;
-  let title;
-  let res: DieselFind;
-
-  match account_type {
-    Account::Mojang => {
-      res = DieselFind::from(MinecraftUserModel::find(*author_id, &conn));
-      desc = MessageBuilder::new()
-        .push_line(MC_FAIL_LINKED_1)
-        .push_line(MC_FAIL_LINKED_2)
-        .push_line("The new MOON2 Launcher makes whitelisting a breeze! Download it from the Discord Store or GitHub today!")
-        .push_line("https://discordapp.com/store/skus/604009411928784917/moon2-launcher")
-        .push_line("https://github.com/MOONMOONOSS/HeliosLauncher/releases")
-        .push(CONTACT_1)
-        .mention(&UserId(BOT_AUTHOR))
-        .push(" or ")
-        .mention(&UserId(663_197_294_262_222_870))
-        .push(CONTACT_2)
-        .build();
-      title = WHITELIST_ADD_FAIL;
-    },
-    Account::Steam => return Err(Reason::Log("Steam linking no longer supported".to_string())),
-    _ => {
-      let desc = MessageBuilder::new()
-        .push(PUBLIC_SHAMING_1)
-        .mention(&UserId(BOT_AUTHOR))
-        .push(PUBLIC_SHAMING_2)
-        .build();
-
-      let _ = msg.channel_id.send_message(&ctx, |m| {
-        m.embed(|em| {
-          em.title(PUBLIC_SHAMING_TITLE);
-          em.description(desc);
-          em.color(Colour::new(0x00FF_0000));
-          em.footer(|f| f.text(EMBED_FOOTER))
-        })
-      });
-
-      return Err(Reason::Log("Idiot programmer".to_string()))
-    }
-  };
-
-  match res.0 {
-    // User found
-    None => {
-      // Reply to user
-      let _ = msg.channel_id.send_message(&ctx, |m| {
-        m.embed(|e| {
-          e.title(title);
-          e.description(desc);
-          e.color(Colour::new(0x00FF_0000));
-          e.footer(|f| f.text(EMBED_FOOTER))
-        })
-      });
-
-      Err(Reason::Log("You've already whitelisted a Steam account!".to_string()))
-    },
-    Some(e) => {
-      use diesel::result::Error;
-
-      match e {
-        // If we aren't in the database then we are guaranteed to not be whitelisted
-        Error::NotFound => Ok(()),
-        _ => {
-          let desc = MessageBuilder::new()
-            .push(UNEXPECTED_FAIL)
-            .push_codeblock(e.to_string(), None)
-            .push(CONTACT_1)
-            .mention(&UserId(BOT_AUTHOR))
-            .push(CONTACT_2)
-            .build();
-
-          let _ = msg.channel_id.send_message(&ctx, |m| {
-            m.embed(|em| {
-              em.title(UNEXPECTED_FAIL_TITLE);
-              em.description(desc);
-              em.color(Colour::new(0x00FF_0000));
-              em.footer(|f| f.text(EMBED_FOOTER))
-            })
-          });
-
-          Err(Reason::UserAndLog {
-            user: format!("An unexpected error occurred: `{}`", e.to_string()),
-            log: e.to_string()
-          })
-        }
-      }
-    }
   }
 }
