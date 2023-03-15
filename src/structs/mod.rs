@@ -136,21 +136,10 @@ impl EventHandler for Handler {
       println!("Received command interaction: {:#?}", command);
 
       let owned_command_data = command.data.options.to_vec();
-      let content = match command.data.name.as_str() {
+      match command.data.name.as_str() {
         "mclink" => commands::mclink::run(&ctx, &command, &owned_command_data).await,
-        _ => "Not implemented".to_string(),
+        _ => Ok(()),
       };
-
-      if let Err(why) = command
-        .create_interaction_response(&ctx.http, |response| {
-          response
-            .kind(InteractionResponseType::ChannelMessageWithSource)
-            .interaction_response_data(|message| message.content(content))
-        })
-        .await
-      {
-          println!("Cannot respond to slash command: {}", why);
-      }
     }
   }
 

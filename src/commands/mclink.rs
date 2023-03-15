@@ -1,11 +1,13 @@
 use std::time::{SystemTime, Duration};
 
 use serenity::builder::CreateApplicationCommand;
+use serenity::model::application::interaction::InteractionResponseType;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
+use serenity::model::channel::Message;
 use serenity::model::prelude::UserId;
 use serenity::model::prelude::command::CommandOptionType;
 use serenity::model::prelude::interaction::application_command::{CommandDataOption, CommandDataOptionValue};
-use serenity::prelude::Context;
+use serenity::prelude::{Context, SerenityError};
 use serenity::utils::Colour;
 
 use crate::commands::MinecraftUserModel;
@@ -117,7 +119,7 @@ async fn not_mc_whitelisted(
   check_sender_not_whitelisted(ctx, command, Account::Mojang).await
 }
 
-pub async fn run(ctx: &Context, command: &ApplicationCommandInteraction, options: &[CommandDataOption]) -> String {
+pub async fn run(ctx: &Context, command: &ApplicationCommandInteraction, options: &[CommandDataOption]) -> Result<(), SerenityError> {
   let option = options
     .get(0)
     .expect("Expected that juicy Minecraft username")
@@ -133,14 +135,42 @@ pub async fn run(ctx: &Context, command: &ApplicationCommandInteraction, options
 
       match res {
         Ok(val) => json = val,
-        Err(_) => return "Error communicating with Mojang".to_string()
+        Err(err) => {
+          return command
+            .create_interaction_response(&ctx.http, |res| {
+              res
+                .kind(InteractionResponseType::ChannelMessageWithSource)
+                .interaction_response_data(|msg| {
+                  msg.embed(|embed| {
+                    embed.title("Failure");
+                    embed.description(
+                      format!("There was an error communicating with Mojang. Here's some more information:\n```{:#?}```", err)
+                    );
+                    embed.color(Colour::new(0x0000_960C));
+                    embed.footer(|f| f.text(EMBED_FOOTER))
+                  })    
+                })
+            }).await
+        }
       };
 
       println!("{:#?}", json);
 
       // If resulting array is empty, then username is not found
       if json.is_empty() {
-        return "Username not found. Please check for typos and try again.".to_string()
+        return command
+          .create_interaction_response(&ctx.http, |res| {
+            res
+              .kind(InteractionResponseType::ChannelMessageWithSource)
+              .interaction_response_data(|msg| {
+                msg.embed(|embed| {
+                  embed.title("Failure");
+                  embed.description("Username not found. Please check for typos and try again.");
+                  embed.color(Colour::new(0x0000_960C));
+                  embed.footer(|f| f.text(EMBED_FOOTER))
+                })    
+              })
+          }).await
       }
 
       // Overwrite json removing the Some()
@@ -150,7 +180,10 @@ pub async fn run(ctx: &Context, command: &ApplicationCommandInteraction, options
         Some(invoker) => {
           invoker.user.id.as_u64().clone()
         },
-        None => return "Message sent from DM".to_string(),
+        None => {
+          println!("Aborting command since it was sent from a DM.");
+          return Err(SerenityError::Other("Server command run from DM"))
+        },
       };
 
       // Add account to database
@@ -165,37 +198,83 @@ pub async fn run(ctx: &Context, command: &ApplicationCommandInteraction, options
 
           match result {
             Ok(_) => {
-              UserId(author_id)
-                .to_user(&ctx.http)
-                .await
-                .unwrap()
-                .direct_message(&ctx, |m| {
-                  m.embed(|e| {
-                    e.title("Success");
-                    e.description(format!("Your Minecraft account `{}` has been successfully linked.
-          Please check <#{}> channel pins for server info and FAQ.
-          The new MOON2 Launcher brings all our servers into one launcher! Download it from the Discord Store or GitHub today!
-          https://discordapp.com/store/skus/604009411928784917/moon2-launcher
-          https://github.com/MOONMOONOSS/HeliosLauncher/releases
-          **If you leave Mooncord for any reason, you will be removed from the whitelist**", json.name, MC_CHANNEL_ID));
-                    e.color(Colour::new(0x0000_960C));
-                    e.footer(|f| f.text(EMBED_FOOTER))
-                  })
-                }).await.unwrap();
-        
-              return "Check DMs.".to_string()
+              command
+                .create_interaction_response(&ctx.http, |res| {
+                  res
+                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                    .interaction_response_data(|msg| {
+                      msg.embed(|embed| {
+                        embed.title("Success");
+                        embed.description(format!("Your Minecraft account `{}` has been successfully linked.
+              Please check <#{}> channel pins for server info and FAQ.
+              **If you leave this Discord server for any reason, you will be removed from the whitelist**", json.name, MC_CHANNEL_ID));
+                        embed.color(Colour::new(0x0000_960C));
+                        embed.footer(|f| f.text(EMBED_FOOTER))    
+                      })    
+                    })
+                }).await
             },
-            Err(_) => format!("Please try again later.\nContact <@{}> or <@663197294262222870> for assistance.", BOT_AUTHOR)
+            Err(err) => {
+              command
+                .create_interaction_response(&ctx.http, |res| {
+                  res
+                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                    .interaction_response_data(|msg| {
+                      msg.embed(|embed| {
+                        embed.title("Failure");
+                        embed.description(format!("Unknown error: Please share this code block with the author: {:#?}", err));
+                        embed.color(Colour::new(0x0000_960C));
+                        embed.footer(|f| f.text(EMBED_FOOTER))
+                      })    
+                    })
+                }).await
+            }
           }
         },
-        Err(_) => format!("Please try again later.\nContact <@{}> or <@663197294262222870> for assistance.", BOT_AUTHOR)
-      };
-
-      "Done".to_string()
+        Err(err) => {
+          return command
+            .create_interaction_response(&ctx.http, |res| {
+              res
+                .kind(InteractionResponseType::ChannelMessageWithSource)
+                .interaction_response_data(|msg| {
+                  msg.embed(|embed| {
+                    embed.title("Failure");
+                    embed.description(format!("Unknown error: Please share this code block with the author: {:#?}", err));
+                    embed.color(Colour::new(0x0000_960C));
+                    embed.footer(|f| f.text(EMBED_FOOTER))
+                  })    
+                })
+            }).await
+        }
+      }
     } else {
-      "Something went wacky".to_string()
+      command
+        .create_interaction_response(&ctx.http, |res| {
+          res
+            .kind(InteractionResponseType::ChannelMessageWithSource)
+            .interaction_response_data(|msg| {
+              msg.embed(|embed| {
+                embed.title("Failure");
+                embed.description("You've already whitelisted an account!");
+                embed.color(Colour::new(0x0000_960C));
+                embed.footer(|f| f.text(EMBED_FOOTER))
+              })    
+            })
+        }).await
     }
   } else {
-    "Username not valid or is already whitelisted.".to_string()
+    command
+      .create_interaction_response(&ctx.http, |res| {
+        res
+          .kind(InteractionResponseType::ChannelMessageWithSource)
+          .interaction_response_data(|msg| {
+            msg.embed(|embed| {
+              embed.title("Failure");
+              embed.description("Username not valid or already whitelisted.");
+              embed.color(Colour::new(0x0000_960C));
+              embed.footer(|f| f.text(EMBED_FOOTER))
+            })    
+          })
+      }).await
   }
 }
