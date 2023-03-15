@@ -42,7 +42,7 @@ use crate::structs::{
   Ratelimiter, config::Config,
 };
 
-static DISCORD_API_ENDPOINT: &str = "https://discordapp.com/api/v6";
+static DISCORD_API_ENDPOINT: &str = "https://discordapp.com/api/v10";
 static DISCORD_APP_ID: u64 = 1_084_582_096_804_249_622;
 // AhiVT Discord
 static DISCORD_GUILD_ID: u64 = 951_038_397_726_748_682;
