@@ -1,0 +1,26 @@
+[package]
+name = "craftalyst"
+version = "3.0.0-next"
+authors = ["Kai Zurowski <Dunklheit@users.noreply.github.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrono = "0.4"
+dotenv = "0.15"
+diesel = { version = "1.4.4", features = ["mysql", "r2d2"] }
+parking_lot = "0.12"
+rand = "0.8"
+reqwest = { version = "0.11", features = ["json", "blocking"] }
+rocket = { version = "0.4", features = ["tls"] }
+rocket_contrib = { version = "0.4", default-features = false, features = ["diesel_mysql_pool", "json"] }
+rocket_cors = "0.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_derive = "1.0"
+serde_json = "1.0"
+serde_yaml = "0.9"
+serenity = { version = "0.11", default-features = false, features = ["default_native_tls", "http", "collector", "unstable_discord_api"] }
+tokio = { version = "1.26", features = ["full"] }
+url = "2.3"
+uuid = "1.3"
