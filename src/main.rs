@@ -45,7 +45,6 @@ use crate::structs::{
 static DISCORD_API_ENDPOINT: &str = "https://discordapp.com/api/v10";
 static DISCORD_APP_ID: u64 = 1_084_582_096_804_249_622;
 // AhiVT Discord
-static DISCORD_GUILD_ID: u64 = 951_038_397_726_748_682;
 static DISCORD_REDIRECT_URI: &str = "https://localhost:8080/discord";
 static DISCORD_SCOPES: [&str; 2] = ["identify", "guilds"];
 

@@ -1,21 +1,16 @@
-use std::time::{SystemTime, Duration};
-
 use serenity::builder::CreateApplicationCommand;
 use serenity::model::application::interaction::InteractionResponseType;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
-use serenity::model::channel::Message;
-use serenity::model::prelude::UserId;
 use serenity::model::prelude::command::CommandOptionType;
 use serenity::model::prelude::interaction::application_command::{CommandDataOption, CommandDataOptionValue};
 use serenity::prelude::{Context, SerenityError};
 use serenity::utils::Colour;
 
-use crate::commands::{MinecraftUserModel, get_conn};
-use crate::constants::{RATELIMIT_INTERVAL, RATELIMIT_REQUESTS, BOT_AUTHOR, GET_CONN_POOL_ERR, EMBED_FOOTER, MC_CHANNEL_ID};
-use crate::models::{Findable, NewMinecraftUser};
-use crate::sql::MysqlPooledConnection;
+use crate::commands::get_conn;
+use crate::constants::{EMBED_FOOTER, MC_CHANNEL_ID};
+use crate::models::{NewMinecraftUser};
 use crate::structs::mojang::MinecraftUser;
-use crate::structs::{Ratelimiter, Account, MysqlPoolContainer, DieselFind};
+use crate::structs::Account;
 
 use super::{check_sender_not_whitelisted, check_mojang_ratelimit};
 

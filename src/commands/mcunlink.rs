@@ -1,12 +1,18 @@
 use serenity::{
   builder::CreateApplicationCommand,
-  model::{prelude::{
-    command::CommandOptionType,
-    interaction::{application_command::{
-      ApplicationCommandInteraction,
-      CommandDataOption, CommandDataOptionValue
-    }, InteractionResponseType}, PermissionOverwrite
-  }, Permissions},
+  model::{
+    prelude::{
+      command::CommandOptionType,
+      interaction::{
+        application_command::{
+          ApplicationCommandInteraction,
+          CommandDataOption, CommandDataOptionValue
+        },
+        InteractionResponseType
+      },
+    },
+    Permissions
+  },
   prelude::Context, utils::Colour
 };
 use serenity::prelude::SerenityError;

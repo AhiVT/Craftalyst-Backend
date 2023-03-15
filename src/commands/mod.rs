@@ -24,11 +24,11 @@ use crate::constants::*;
 use crate::structs::{
   Account, DieselFind,
   MysqlPoolContainer, Ratelimiter,
-  config::Config, mojang::MinecraftUser,
+  config::Config,
 };
 use crate::sql::MysqlPooledConnection;
 use crate::models::{
-  Deleteable, Findable, NewMinecraftUser,
+  Findable,
   MinecraftUser as MinecraftUserModel,
 };
 
