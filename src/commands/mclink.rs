@@ -19,6 +19,7 @@ pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicatio
   command
     .name("mclink")
     .description("Whitelist your Minecraft account")
+    .dm_permission(false)
     .create_option(|option| {
       option
         .name("username")
