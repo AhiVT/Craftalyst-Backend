@@ -32,7 +32,7 @@ use crate::models::{
 };
 
 #[group]
-#[commands(mclink, mcunlink, quotastats)]
+#[commands(mcunlink, quotastats)]
 pub struct General;
 
 #[check]
@@ -343,113 +343,6 @@ pub async fn help(
   owners: HashSet<UserId>,
 ) -> CommandResult {
   help_commands::with_embeds(ctx, msg, args, help_options, groups, owners).await;
-
-  Ok(())
-}
-
-#[command]
-#[only_in(guilds)]
-#[checks(WhitelistChan, CommandEnabled, ValidAcctLength, NotMCWhitelisted, MojangRatelimit)]
-#[description = "Whitelists the given Mojang account."]
-#[min_args(1)]
-#[max_args(1)]
-#[bucket = "whitelist"]
-pub async fn mclink(
-  ctx: &Context,
-  msg: &Message,
-  args: Args,
-) -> CommandResult {
-  // Retrieve the user's current MC UUID
-  let account = args.parse::<String>().unwrap();
-  println!("{}", &account);
-  let res = MinecraftUser::get_user(&account).await;
-  let json: Vec<MinecraftUser>;
-
-  match res {
-    Ok(val) => json = val,
-    Err(_) => {
-      let _ = msg.channel_id.send_message(&ctx, |m| {
-        m.embed(|em| {
-          em.title("Error communicating with Mojang");
-          em.description(format!("Mojang's servers may be down. Try again later.\nContact <@{}> or <@663197294262222870> for assistance.", BOT_AUTHOR));
-          em.color(Colour::new(0x00FF_0000));
-          em.footer(|f| f.text(EMBED_FOOTER))
-        })
-      });
-
-      return Ok(());
-    },
-  };
-
-  println!("{:#?}", json);
-
-  // If resulting array is empty, then username is not found
-  if json.is_empty() {
-    let _ = msg.channel_id.send_message(&ctx, |m| {
-      m.embed(|em| {
-        em.title("Username not found");
-        em.description(format!("We couldn't find your Mojang account. Check your spelling and try again.\nThe new MOON2 Launcher makes whitelisting a breeze! Download it from the Discord Store or GitHub today!\nhttps://discordapp.com/store/skus/604009411928784917/moon2-launcher\nhttps://github.com/MOONMOONOSS/HeliosLauncher/releases\nContact <@{}> or <@663197294262222870> for assistance.", BOT_AUTHOR));
-        em.color(Colour::new(0x00FF_0000));
-        em.footer(|f| f.text(EMBED_FOOTER))
-      })
-    });
-    return Ok(());
-  }
-
-  // Overwrite json removing the Some()
-  let json: MinecraftUser = json[0].clone();
-
-  // Add account to database
-  let user = NewMinecraftUser {
-    discord_id: *msg.author.id.as_u64(),
-    minecraft_uuid: String::from(&json.id),
-    minecraft_name: String::from(&json.name),
-  };
-  match get_conn(ctx, msg).await {
-    Ok(conn) => {
-      let result = user.create(&conn);
-
-      match result {
-        Ok(_) => {
-          msg.author.direct_message(&ctx, |m| {
-            m.embed(|e| {
-              e.title("Success");
-              e.description(format!("Your Minecraft account `{}` has been successfully linked.
-    Please check <#{}> channel pins for server info and FAQ.
-    The new MOON2 Launcher brings all our servers into one launcher! Download it from the Discord Store or GitHub today!
-    https://discordapp.com/store/skus/604009411928784917/moon2-launcher
-    https://github.com/MOONMOONOSS/HeliosLauncher/releases
-    **If you leave Mooncord for any reason, you will be removed from the whitelist**", json.name, MC_CHANNEL_ID));
-              e.color(Colour::new(0x0000_960C));
-              e.footer(|f| f.text(EMBED_FOOTER))
-            })
-          }).await?;
-    
-          return Ok(())
-        },
-        Err(_) => {
-          msg.channel_id.send_message(&ctx, |m| {
-            m.embed(|e| {
-              e.title(WHITELIST_ADD_FAIL);
-              e.description(format!("Please try again later.\nContact <@{}> or <@663197294262222870> for assistance.", BOT_AUTHOR));
-              e.color(Colour::new(0x00FF_0000));
-              e.footer(|f| f.text(EMBED_FOOTER))
-            })
-          }).await?;
-        }
-      }
-    },
-    Err(_) => {
-      msg.channel_id.send_message(&ctx, |m| {
-        m.embed(|e| {
-          e.title(WHITELIST_ADD_FAIL);
-          e.description(format!("Please try again later.\nContact <@{}> or <@663197294262222870> for assistance.", BOT_AUTHOR));
-          e.color(Colour::new(0x00FF_0000));
-          e.footer(|f| f.text(EMBED_FOOTER))
-        })
-      }).await?;
-    }
-  };
 
   Ok(())
 }
